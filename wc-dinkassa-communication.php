@@ -1,17 +1,93 @@
 <?php
 /**
-* Plugin Name: Dinkassa-Communicator.php
-* Plugin URI: https://www.dinkassa.se/api/
-* Description: Contains woocommerce filters needed to facilitate communication
- * between WooCommerce webshops and the Dinkassa.se server.
-* Version: 1.0.0
+* Plugin Name: WooCommerce-ES Kassasystem Integration
+* Plugin URI: https://github.com/tomberpato/WooCommerce
+* Description: A plugin for managing communication between WooCommerce and the Dinkassa.se server.
+* Version: 2.0.0
 * Author: Tom Boye
-* Author URI: https://www.dinkassa.se/api/
 * License: None
 */
 defined( 'ABSPATH' ) || exit;
 define('BLANKS', '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;');
 define('META_KEY_PREFIX', '_custom_pf_');
+
+/**
+ * WP_Lock class.
+ */
+if ( ! class_exists( 'WP_Lock' ) ) {
+    require_once dirname( __FILE__ ) . '/lib/class-wp-lock.php';
+}
+
+/**
+ * WP_Lock_Backend class.
+ */
+if ( ! class_exists( 'WP_Lock_Backend' ) ) {
+    require_once dirname( __FILE__ ) . '/lib/backend/class-wp-lock-backend.php';
+}
+
+foreach ( glob( dirname( __FILE__ ) . '/lib/backend/class-wp-lock-backend-*.php' ) as $backend_class_path ) {
+    require_once $backend_class_path;
+}
+
+add_filter( 'wp_lock_backend', 'wp_lock_set_default_backend' );
+
+/**
+ * Set the default lock backend if null.
+ *
+ * Called via `wp_lock_backend`.
+ *
+ * @param WP_Lock_Backend|null $lock_backend The backend.
+ *
+ * @return WP_Lock_Backend A default lock backend.
+ */
+function wp_lock_set_default_backend( $lock_backend ) {
+    if ( is_null( $lock_backend ) ) {
+        return new WP_Lock_Backend_flock();
+    }
+}
+
+if ( ! class_exists( 'WC_ESKassa_Integration' ) ) :
+
+    class WC_ESKassa_Integration {
+
+        /**
+         * Construct the plugin.
+         */
+        public function __construct() {
+            add_action( 'plugins_loaded', array( $this, 'init' ) );
+        }
+
+        /**
+         * Initialize the plugin.
+         */
+        public function init() {
+
+            // Checks if WooCommerce is installed.
+            if ( class_exists( 'WC_Integration' ) ) {
+                // Include our integration class.
+                include_once 'includes/class-wc-dinkassa-integration.php';
+
+                // Register the integration.
+                add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
+            } else {
+                // throw an admin error if you like
+            }
+        }
+
+        /**
+         * Add a new integration to WooCommerce.
+         */
+        public function add_integration( $integrations ) {
+            $integrations[] = 'WC_DinKassa_Integration';
+            return $integrations;
+        }
+
+    }
+
+    $WC_ESKassa_Integration = new WC_ESKassa_Integration(  );
+
+endif;
+
 /**
  * @var WP_Async_Request $async_http_request
  * @var WooCommerce_Background_Process $background_process
@@ -83,19 +159,11 @@ function plugins_loaded_integration() {
 }
 add_action('woocommerce_new_order', 'update_dinkassa_product_inventory', 10, 2);
 add_action('woocommerce_update_product', 'update_dinkassa_product', 10, 2);
-//add_action('before_delete_post', 'delete_dinkassa_product', 10, 1);
-add_action('edited_product_cat', 'update_dinkassa_product_category', 10, 1);
-//add_action('pre_delete_term', 'delete_dinkassa_product_category', 10, 4);
+add_action('before_delete_post', 'delete_dinkassa_product', 10, 1);
+add_action('edited_product_cat', 'save_custom_category_fields', 10, 1);
+add_action('pre_delete_term', 'delete_dinkassa_product_category', 10, 4);
 add_action('init', 'register_custom_taxonomy', 10, 0);
 add_action('created_product_cat', 'create_dinkassa_product_category', 10, 2);
-
-function register_wc_api_rest_routes() {
-    require_once('rest_api_controller/wc-dinkassa-rest-controller.php');
-    $controller = new WC_Dinkassa_REST_Controller();
-    $controller->register_routes();
-}
-
-add_action('rest_api_init', 'register_wc_api_rest_routes');
 
 /**
  * Registers a taxonomy 'deleted_item' used for storing information about
@@ -188,10 +256,7 @@ function wc_api_create_product_data_filter($data, $wc_api_product)
     }
     $product_data['title'] = $product_data['description'];
     $product_data['name'] = $product_data['title'];
-    $product_data['short_description'] = $product_data['description'];
     $product_data['regular_price'] = $product_data['priceincludingvat'];
-    $product_data['sale_price'] = $product_data['priceincludingvat'];
-    $product_data['price'] = $product_data['priceincludingvat'];
     $product_data['managing_stock'] = true;
     $product_data['in_stock'] = true;
     $product_data['sold_individually'] = false;
@@ -281,7 +346,6 @@ function woocommerce_api_delete_product($product_id, $wc_api_product)
     $dinkassa_id = get_post_meta($product_id, $meta_key, true);
     if (! empty($dinkassa_id))
     {
-        delete_custom_product_fields($product_id);
         $deleted_item = new WC_Deleted_Item();
         $deleted_item->type = 'product';
         $deleted_item->dinkassa_id = $dinkassa_id;
@@ -397,20 +461,6 @@ function wordpress_logout_handler()
 }
 
 /**
- * Checks if a product exists or is new.
- *
- * @param int $product_id
- * @return bool True if Dinkassa.se product ID exists => updating, false otherwise
- */
-function is_updating_product($product_id)
-{
-    // Checks whether or not the product's Id is set
-    $meta_key = META_KEY_PREFIX . 'id';
-    $dinkassa_id = (int)get_post_meta($product_id, $meta_key, true);
-    return ! empty($dinkassa_id);
-}
-
-/**
  * Updates or creates a new product in Dinkassa.se using its REST API. This function
  * is called when a product has been edited or when a new one has been published.
  *
@@ -419,9 +469,9 @@ function is_updating_product($product_id)
  */
 function update_dinkassa_product($product_id, $product)
 {
-    $updating = is_updating_product($product_id);
+    $updating = woocommerce_save_product_meta_data($product_id);
     $json_data = create_product_payload($product, $updating);
-    if (! is_wp_error($json_data)) {
+    if (!is_wp_error($json_data)) {
         $opt_headers = array(
             'Content-Type: application/json',
             'Content-Length: ' . strlen($json_data),
@@ -436,8 +486,7 @@ function update_dinkassa_product($product_id, $product)
                 null,
                 $product_id,
                 "product-updated");
-        }
-        else {
+        } else {
             create_async_http_request(
                 "POST",
                 $json_data,
@@ -447,12 +496,11 @@ function update_dinkassa_product($product_id, $product)
                 $product_id,
                 "product-created");
         }
-
-        // For technical reasons this action gets fired twice. This is bad when
-        // a new product is being created in Dinkassa.se. Creating the same pro-
-        // duct twice is an error. Removing the action solves this problem.
-        remove_action('woocommerce_update_product', 'update_dinkassa_product');
     }
+    // For technical reasons this action gets fired twice. This is bad when
+    // a new product is being created in Dinkassa.se. Creating the same pro-
+    // duct twice is an error. Removing the action solves this problem.
+    remove_action('woocommerce_update_product', 'update_dinkassa_product');
 }
 
 /**
@@ -480,10 +528,10 @@ function update_dinkassa_product_inventory($order_id, $order)
         // been purchased so far in case communication with Dinkassa.se
         // fails. This field is set to 0 upon successful update of
         // Dinkassa.se inventoryitem stock quantity. We need to lock
-        // this piece of code just in case the background process will
-        // to attempt to process pending stock quantity updates simultaneously.
+        // this piece of code to prevent the background process from
+        // processing pending stock quantity updates simultaneously.
         $wp_lock->acquire();
-        $quantity_change = $item->get_quantity('edit');
+        $quantity_change = $item->get_quantity();
         $meta_key = META_KEY_PREFIX . 'quantity_change';
         $prev_qty_change = (int)get_post_meta($product_id, $meta_key, true);
         update_post_meta($product_id, $meta_key, $quantity_change + $prev_qty_change);
@@ -575,6 +623,7 @@ function create_dinkassa_product_category($term_id, $tt_id = 0)
         // Category created in admin. Get posted custom fields from client.
         // Custom fields of categories created via endpoints are already
         // saved in the database.
+        $current_datetime = date('Y-m-d H:i:s');
         $account_number = $_POST['wh_meta_account'];
         $only_categories = $_POST['wh_meta_only_cat'];
         $default_vat = $_POST['wh_meta_default_vat'];
@@ -582,6 +631,7 @@ function create_dinkassa_product_category($term_id, $tt_id = 0)
         add_term_meta($term_id, 'wh_meta_only_cat', $only_categories);
         add_term_meta($term_id, 'wh_meta_default_vat', $default_vat);
         add_term_meta($term_id, 'wh_meta_pending_crud', 0);
+        add_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
     }
     $json_data = create_category_payload($term_id);
     if (! is_wp_error($json_data)) {
@@ -606,24 +656,16 @@ function create_dinkassa_product_category($term_id, $tt_id = 0)
  *
  * @param int $term_id
  */
-function update_dinkassa_product_category($term_id)
+function save_custom_category_fields($term_id)
 {
-    $json_data = create_category_payload($term_id, true);
-    if (! is_wp_error($json_data)) {
-        $opt_headers = array(
-            'Content-Type: application/json',
-            'Content-Length: ' . strlen($json_data),
-            'Accept: application/json'
-        );
-        create_async_http_request(
-            'PUT',
-            $json_data,
-            'category',
-            $opt_headers,
-            null,
-            $term_id,
-            'category-updated');
-    }
+    $current_datetime = date('Y-m-d H:i:s');
+    $wh_meta_account = $_POST['wh_meta_account'];
+    $wh_meta_only_cat = $_POST['wh_meta_only_cat'];
+    $wh_meta_default_vat = $_POST['wh_meta_default_vat'];
+    update_term_meta($term_id, 'wh_meta_account', $wh_meta_account);
+    update_term_meta($term_id, 'wh_meta_only_cat', $wh_meta_only_cat);
+    update_term_meta($term_id, 'wh_meta_default_vat', $wh_meta_default_vat);
+    update_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
 }
 
 /**
@@ -638,19 +680,14 @@ function delete_dinkassa_product_category($term_id, $taxonomy)
 {
     if ($taxonomy === 'product_cat') {
         $category_info = null;
-        $category = get_term($term_id, 'product_cat');
         $category_id = get_term_meta($term_id, 'wh_meta_cat_id', true);
         if (get_option('log_wc_events') === 'yes') {
+            $category = get_term($term_id, 'product_cat');
             $category_info = array();
             $category_info['Id'] = $category_id;
             $category_info['Name'] = $category->name;
             $category_info = array('Item' => $category_info);
         }
-        delete_term_meta($term_id, 'wh_meta_cat_id');
-        delete_term_meta($term_id, 'wh_meta_account');
-        delete_term_meta($term_id, 'wh_meta_only_cat');
-        delete_term_meta($term_id, 'wh_meta_default_vat');
-        delete_term_meta($term_id, 'wh_meta_pending_crud');
         if (! empty($category_id)) {
             create_async_http_request(
                 'DELETE',
@@ -662,9 +699,6 @@ function delete_dinkassa_product_category($term_id, $taxonomy)
                 'category-deleted',
                 $category_info);
         }
-        // We need to set the main category of all products belonging
-        // to the deleted category to 'Uncategorized'. Maybe it should
-        // not be possible to delete a category that is used.
     }
 }
 
@@ -769,12 +803,22 @@ function wc_get_category_options()
 
 add_action('woocommerce_product_options_general_product_data', 'woocommerce_product_custom_fields');
 /**
- * Adds input fields for all custom product fields on the product admin page.
+ * Adds input fields for custom product fields on the product admin page.
  */
 function woocommerce_product_custom_fields()
 {
     echo '<div class="options_group">';
-
+    woocommerce_wp_text_input(
+        array(
+            'id' => META_KEY_PREFIX . 'description',
+            'label' => __('Description', 'woocommerce'),
+            'custom_attributes' => array(
+                'required' => 'required'
+            ),
+            'desc_tip' => true,
+            'description' => 'Inventoryitem description'
+        )
+    );
     woocommerce_wp_text_input(
         array(
             'id' => META_KEY_PREFIX . 'id',
@@ -797,12 +841,6 @@ function woocommerce_product_custom_fields()
             'custom_attributes' => array(
                 'required' => 'required'
             )
-        )
-    );
-    woocommerce_wp_text_input(
-        array(
-            'id' => META_KEY_PREFIX . 'description',
-            'label' => __('Description', 'woocommerce')
         )
     );
     woocommerce_wp_text_input(
@@ -868,18 +906,30 @@ function woocommerce_product_custom_fields()
             'id' => '_modified_builtin_fields'
         )
     );
+    woocommerce_wp_hidden_input(
+        array(
+            'id' => '_synchronize_prices',
+            'value' => get_option('synch_prices') === 'yes'
+        )
+    );
+    woocommerce_wp_hidden_input(
+        array(
+            'id' => '_synchronize_description',
+            'value' => get_option('synch_desc') === 'yes'
+        )
+    );
     echo '</div>';
 }
 
 /**
- * Saves all custom product fields for a created/updated product.
- * The function also checks if the stock quantity has changed. If
- * it has, it updates the stock quantity in Dinkassa.se.
+ * Saves custom product fields of a created/updated product.
+ * The function returns true if the product is being updated, false if it is
+ * new.
  *
  * @param int $post_id
+ * @return bool
  */
-add_action('woocommerce_process_product_meta', 'woocommerce_product_custom_fields_save');
-function woocommerce_product_custom_fields_save($post_id)
+function woocommerce_save_product_meta_data($post_id)
 {
     $custom_field_names = array(
         'barcode',
@@ -888,21 +938,18 @@ function woocommerce_product_custom_fields_save($post_id)
         'barcode4',
         'barcode5',
         'productcode',
-        'description',
         'categoryname',
+        'description',
         'externalproductcode',
         'pickuppriceincludingvat',
         'suppliername',
         'vatpercentage',
         'current_cat_term_id'
     );
-
-    // check if any custom or builtin product fields have been modified
-    $modified_custom = $_POST['_modified_custom_fields'];
-    $modified_builtin = $_POST['_modified_builtin_fields'];
-    $unmodified = !$modified_custom && !$modified_builtin;
+    $updating = true;
     $wc_product = wc_get_product($post_id);
-    if ($modified_custom) {
+    // check if any custom fields have been modified
+    if ($_POST['_modified_custom_fields']) {
         foreach ($custom_field_names as $field_name) {
             $meta_key = META_KEY_PREFIX . $field_name;
             $posted_value = $_POST[$meta_key];
@@ -913,27 +960,31 @@ function woocommerce_product_custom_fields_save($post_id)
             update_post_meta($post_id, $meta_key, esc_attr($meta_value));
         }
     }
-    // Prevent unnecessary dinkassa.se update if no modifications have been made
-    if ($unmodified)
-        remove_action('woocommerce_update_product', 'update_dinkassa_product');
     if (!empty($wc_product)) {
-        if (empty($wc_product->get_name()))
-            $wc_product->set_name($wc_product->get_description());
-        else if (empty($wc_product->get_description()))
-            $wc_product->set_description($wc_product->get_description());
         // Check if product exists or is new
         $meta_key = META_KEY_PREFIX . 'id';
         $dinkassa_id = get_post_meta($post_id, $meta_key, true);
-        if (empty($dinkassa_id)) {
+        if (! empty($dinkassa_id))
+        {
+            if (get_option('synch_prices') === 'yes')
+            {
+                // Synchronizing WC and Dinkassa.se prices. Save current price of product
+                $meta_key = META_KEY_PREFIX . 'priceincludingvat';
+                update_post_meta($post_id, $meta_key, $wc_product->get_regular_price());
+            }
+        }
+        else {
             // New product
+            $updating = false;
             $extra_custom_fields = array(
                 'id' => '',
                 'pending_crud' => 0,
-                'quantity_change' => 0
+                'quantity_change' => 0,
+                'priceincludingvat' => $wc_product->get_regular_price()
             );
             foreach ($extra_custom_fields as $field_name => $value) {
                 $meta_key = META_KEY_PREFIX . $field_name;
-                update_post_meta($post_id, $meta_key, $value);
+                add_post_meta($post_id, $meta_key, $value);
             }
             $current_quantity = $wc_product->get_stock_quantity('edit');
             $stock_status = $current_quantity > 0 ? 'instock' : 'outofstock';
@@ -952,42 +1003,60 @@ function woocommerce_product_custom_fields_save($post_id)
             } catch (WC_Data_Exception $e) {
             }
         }
-        else {
-            if (isset($_POST['_stock'])) {
-                // Check if stock quantity has changed. If it has,
-                // update stock quantity in Dinkassa.se.
-                $new_quantity = (int)$_POST['_stock'];
-                $current_quantity = $wc_product->get_stock_quantity('edit');
-                if ($new_quantity != $current_quantity) {
-                    global $wp_lock;
+    }
+    return $updating;
+}
 
-                    $wp_lock->acquire();
-                    $meta_key = META_KEY_PREFIX . 'quantity_change';
-                    $prev_qty_change = (int)get_post_meta($post_id, $meta_key, true);
-                    $quantity_change = $current_quantity - $new_quantity + $prev_qty_change;
-                    $form_data = sprintf('quantityChange=%d&currentQuantity=%d&newQuantity=%d',
-                        $quantity_change,
-                        $current_quantity,
-                        $new_quantity);
-                    $opt_headers = array(
-                        'Content-Type: application/x-www-form-urlencoded',
-                        'Content-Length: ' . strlen($form_data),
-                        'Accept: application/json'
-                    );
-                    update_post_meta($post_id, $meta_key, $quantity_change);
-                    create_async_http_request(
-                        "POST",
-                        $form_data,
-                        "inventoryitem",
-                        $opt_headers,
-                        $dinkassa_id,
-                        $post_id,
-                        "stock-quantity-updated");
-                }
-            }
+/**
+ * Checks if the product stock has changed. If it has, it updates the
+ * stock quantity in Dinkassa.se.
+ *
+ * @var int $post_id Product ID
+ */
+function woocommerce_process_product_meta($post_id)
+{
+    $wc_product = wc_get_product($post_id);
+    $modified_custom = $_POST['_modified_custom_fields'];
+    $modified_builtin = $_POST['_modified_builtin_fields'];
+    $unmodified = !$modified_builtin && !$modified_custom;
+    if ($unmodified)
+        remove_action('woocommerce_update_product', 'update_dinkassa_product');
+    $meta_key = META_KEY_PREFIX . 'id';
+    $dinkassa_id = get_post_meta($post_id, $meta_key, true);
+    if (isset($_POST['_stock']) && !empty($dinkassa_id)) {
+        // Check if stock quantity has changed. If it has,
+        // update stock quantity in Dinkassa.se.
+        $new_quantity = (int)$_POST['_stock'];
+        $current_quantity = $wc_product->get_stock_quantity('edit');
+        if ($new_quantity != $current_quantity) {
+            global $wp_lock;
+
+            $wp_lock->acquire();
+            $meta_key = META_KEY_PREFIX . 'quantity_change';
+            $prev_qty_change = (int)get_post_meta($post_id, $meta_key, true);
+            $quantity_change = $current_quantity - $new_quantity + $prev_qty_change;
+            $form_data = sprintf('quantityChange=%d&currentQuantity=%d&newQuantity=%d',
+                $quantity_change,
+                $current_quantity,
+                $new_quantity);
+            $opt_headers = array(
+                'Content-Type: application/x-www-form-urlencoded',
+                'Content-Length: ' . strlen($form_data),
+                'Accept: application/json'
+            );
+            update_post_meta($post_id, $meta_key, $quantity_change);
+            create_async_http_request(
+                "POST",
+                $form_data,
+                "inventoryitem",
+                $opt_headers,
+                $dinkassa_id,
+                $post_id,
+                "stock-quantity-updated");
         }
     }
 }
+add_action('woocommerce_process_product_meta', 'woocommerce_process_product_meta', 10, 1);
 
 /**
  * Creates a JSON-encoded string containing product data. This
@@ -1001,13 +1070,14 @@ function create_product_payload($product, $updating)
 {
     $product_data = array();
     $product_fields = array(
-        'Description',
         'BarCode',
         'BarCode2',
         'BarCode3',
         'BarCode4',
         'BarCode5',
         'ProductCode',
+        'Description',
+        'PriceIncludingVat',
         'ExternalProductCode',
         'PickupPriceIncludingVat',
         'VatPercentage',
@@ -1021,7 +1091,6 @@ function create_product_payload($product, $updating)
         $product_data[$field] = htmlspecialchars_decode($meta_value);
     }
     $product_data['VisibleOnSalesMenu'] = $product->is_visible();
-    $product_data['PriceIncludingVat'] = $product->get_regular_price('edit');
     $category_ids = $product->get_category_ids('edit');
     if (! isset($category_ids))
         return new WP_Error('null value', __FUNCTION__ . ': WC Product category not set');
@@ -1062,47 +1131,9 @@ function create_product_payload($product, $updating)
 }
 
 /**
- * Removes all custom fields of a product from the database.
- *
- * @param int $product_id
- * @return bool true if all fields were successfully removed, false otherwise
- */
-function delete_custom_product_fields($product_id)
-{
-    $product_fields = array(
-        'id',
-        'categoryname',
-        'barcode',
-        'barcode2',
-        'barcode3',
-        'barcode4',
-        'barcode5',
-        'productcode',
-        'description',
-        'externalproductcode',
-        'pickuppriceincludingvat',
-        'suppliername',
-        'vatpercentage',
-        'pending_crud',
-        'quantity_change',
-        'current_cat_term_id'
-    );
-    $result = true;
-    foreach ($product_fields as $field)
-    {
-        $meta_key = META_KEY_PREFIX . $field;
-        $success = delete_post_meta($product_id, $meta_key);
-        if (! $success)
-            $result = false;
-    }
-    $result = $result && delete_post_meta($product_id, '_modified_custom_fields');
-    $result = $result && delete_post_meta($product_id, '_modified_builtin_fields');
-    return $result;
-}
-
-/**
- * Returns an associative array containing product information. Used
- * for saving information about a product before it's deleted.
+ * Returns an associative array containing product information.
+ * The function is used to save information about a product before
+ * it's deleted.
  *
  * @var int $product_id
  * @return array
@@ -1119,7 +1150,7 @@ function get_product_info($product_id)
             $dinkassa_id = get_post_meta($product_id, $meta_key, true);
             $meta_key = META_KEY_PREFIX . 'categoryname';
             $category_name = get_post_meta($product_id, $meta_key, true);
-            $product_info['Description'] = $product->get_description();
+            $product_info['Description'] = $product->get_name();
             $product_info['CategoryName'] = $category_name;
             $product_info['Id'] = $dinkassa_id;
         }
@@ -1138,9 +1169,7 @@ function delete_dinkassa_product($post_id)
     $meta_key = META_KEY_PREFIX . 'id';
     $dinkassa_id = get_post_meta($post_id, $meta_key, true);
     if (! empty($dinkassa_id)) {
-        $product_info = null;
-        if (get_option('log_wc_events') === 'yes')
-            $product_info = get_product_info($post_id);
+        $product_info = get_product_info($post_id);
         create_async_http_request(
             "DELETE",
             null,
@@ -1151,7 +1180,6 @@ function delete_dinkassa_product($post_id)
             "product-deleted",
             $product_info);
     }
-    delete_custom_product_fields($post_id);
 }
 
 //Product Cat Create page
@@ -1230,21 +1258,26 @@ add_action('product_cat_add_form_fields', 'wh_taxonomy_add_new_meta_field', 10, 
 add_action('product_cat_edit_form_fields', 'wh_taxonomy_edit_meta_field', 10, 1);
 
 // Save extra taxonomy fields callback function.
-function wh_save_taxonomy_custom_meta($term_id) {
-
-    $current_datetime = date('Y-m-d H:i:s');
-    $wh_meta_account = filter_input(INPUT_POST, 'wh_meta_account');
-    $wh_meta_only_cat = filter_input(INPUT_POST, 'wh_meta_only_cat');
-    $wh_meta_default_vat = filter_input(INPUT_POST, 'wh_meta_default_vat');
-    update_term_meta($term_id, 'wh_meta_account', $wh_meta_account);
-    update_term_meta($term_id, 'wh_meta_only_cat', $wh_meta_only_cat);
-    update_term_meta($term_id, 'wh_meta_default_vat', $wh_meta_default_vat);
-    update_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
+function update_dinkassa_category($term_id) {
+    $json_data = create_category_payload($term_id, true);
+    if (! is_wp_error($json_data)) {
+        $opt_headers = array(
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($json_data),
+            'Accept: application/json'
+        );
+        create_async_http_request(
+            'PUT',
+            $json_data,
+            'category',
+            $opt_headers,
+            null,
+            $term_id,
+            'category-updated');
+    }
 }
 
-add_action('edited_product_cat', 'wh_save_taxonomy_custom_meta', 10, 1);
-add_action('create_product_cat', 'wh_save_taxonomy_custom_meta', 10, 1);
-
+add_action('edited_product_cat', 'update_dinkassa_category', 10, 1);
 add_filter( 'manage_edit-product_cat_columns', 'wh_register_custom_fields' ); //Register Function
 add_action( 'manage_product_cat_custom_column', 'wh_display_custom_field_values' , 10, 3); //Populating the Column
 
@@ -1320,11 +1353,18 @@ function display_admin_custom_product_fields( $column, $product_id ){
         case 'barcode':
         case 'productcode':
         case 'suppliername':
-        case 'vatpercentage':
         {
             $meta_key = META_KEY_PREFIX . $column;
             $meta_value = get_post_meta($product_id, $meta_key, true);
-            echo $meta_value;
+            echo esc_html($meta_value);
+        }
+        break;
+
+        case 'vatpercentage':
+        {
+            $meta_key = META_KEY_PREFIX . 'vatpercentage';
+            $meta_value = get_post_meta($product_id, $meta_key, true);
+            echo esc_html($meta_value) . '%';
         }
         break;
     }

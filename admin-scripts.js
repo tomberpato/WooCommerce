@@ -32,7 +32,7 @@ jQuery(document).ready(function($) {
 
 /*
 jQuery(document).ready(function($) {
-    // REST API calls from client doesn't work for some reason
+    // REST API requests sent from client doesn't work for some reason
 	$("button.button-secondary").click(function() {
 		let dinkassaRequest = new XMLHttpRequest();
 		dinkassaRequest.open('GET', 'https://www.dinkassa.se/api/inventoryitem?fetch=1', true);
@@ -50,21 +50,35 @@ jQuery(document).ready(function($) {
 
 // Sets the hidden input fields '_modified_custom_fields' and
 // '_modified_builtin_fields' to true/false depending on whether
-// custom/builtin product fields resp. have been modified.
+// custom/builtin product fields have been modified.
 jQuery(document).ready(function($){
 	$("#_modified_custom_fields").val(null);
 	$("#_modified_builtin_fields").val(null);
 	$("[id^='_custom_pf_']").on('change', function(event) {
 		$("#_modified_custom_fields").val(1);
+		let element_id = $(this).attr('id');
+		if (element_id === '_custom_pf_description')
+		{
+			if ($("#_synchronize_description").val())
+			{
+				let description = $(this).val();
+				$("#title").val(description);
+			}
+		}
+	});
+	$("#title").on('change', function(event) {
+		if ($("#_synchronize_description").val()) {
+			let product_name = $(this).val();
+			$("#_custom_pf_description").val(product_name);
+			$("#_modified_custom_fields").val(1);
+		}
 	});
 	$("[id^='_visibility_']").on('change', function(event) {
 		$("#_modified_builtin_fields").val(1);
 	});
 	$("#_regular_price").on('change', function(event) {
-		$("#_modified_builtin_fields").val(1);
-	});
-	$("#_sale_price").on('change', function(event) {
-		$("#_modified_builtin_fields").val(1);
+		if ($("#_synchronize_prices").val())
+			$("#_modified_builtin_fields").val(1);
 	});
 	$("[id^='in-product_cat-']").on('change', function(event) {
 		$("#_modified_builtin_fields").val(1);

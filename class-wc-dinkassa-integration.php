@@ -42,7 +42,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
          * @return void
          */
         public function init_form_fields() {
-            global $synchronizing;
+            $synchronizing = get_option('synchronize') === 'yes';
 
             $this->form_fields = array(
                 'machine_key' => array(
@@ -52,7 +52,11 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'class'             => 'machine_key',
                     'description'       => __( 'Each cash register machine has a unique, secret key associated with a specific machine ID.', 'woocommerce-dinkassa-integration' ),
                     'desc_tip'          => true,
-                    'custom_attributes' => array('required' => $synchronizing),
+                    'custom_attributes' => array(
+                          'required' => $synchronizing,
+                          'pattern' => "[0-9a-fA-F]{32}",
+                          'title' => 'Machine key must be a 32-digit hexadecimal number '
+                    ),
                     'default'           => ''
                 ),
 				'machine_id' => array(
@@ -60,8 +64,12 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'type'              => 'text',
                     'css'               => 'height: 30px;',
                     'class'             => 'machine_id',
-                    'custom_attributes' => array('required' => $synchronizing),
-                    'description'       => __( 'Determines which machine the API can read data from or write data to.', 'woocommerce-dinkassa-integration' ),
+                    'custom_attributes' => array(
+                          'required' => $synchronizing,
+                          'pattern' => "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+                          'title' => 'The machine ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx'
+                    ),
+                    'description'       => __( 'Determines which machine the API can read data from or write data to.', 'woocommerce-dinkassa-integration'),
                     'desc_tip'          => true,
                     'default'           => ''
                 ),
@@ -70,7 +78,11 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'type'              => 'text',
                     'css'               => 'height: 30px;',
                     'class'             => 'integrator_id',
-                    'custom_attributes' => array('required' => $synchronizing),
+                    'custom_attributes' => array(
+                          'required' => $synchronizing,
+                          'pattern' => "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+                          'title' => 'The integrator ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx'
+                    ),
                     'description'       => __( 'A unique key representing a system of one or more machines that can connect to the API.', 'woocommerce-dinkassa-integration' ),
                     'desc_tip'          => true,
                     'default'           => ''
@@ -79,9 +91,25 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'title'             => __( 'Synchronize', 'woocommerce-dinkassa-integration' ),
                     'type'              => 'checkbox',
                     'class'             => 'synch_checkbox',
-                    'label'             => __( 'Synchronize', 'woocommerce-dinkassa-integration' ),
+                    'label'             => __( 'Synchronize products and categories', 'woocommerce-dinkassa-integration' ),
                     'default'           => 'no',
                     'description'       => __( 'Keep products and categories in WooCommerce and Dinkassa.se <br> synchronized.', 'woocommerce-dinkassa-integration' ),
+                ),
+                'synchronize_prices' => array(
+                    'title'             => __( 'Synchronize Prices', 'woocommerce-dinkassa-integration' ),
+                    'type'              => 'checkbox',
+                    'class'             => 'synch_price_checkbox',
+                    'label'             => __( 'Synchronize Prices', 'woocommerce-dinkassa-integration' ),
+                    'default'           => 'yes',
+                    'description'       => __( 'Synchronize prices in WooCommerce and Dinkassa.se.', 'woocommerce-dinkassa-integration' ),
+                ),
+                'synchronize_names'  => array(
+                    'title'             => __( 'Synchronize Item Names', 'woocommerce-dinkassa-integration' ),
+                    'type'              => 'checkbox',
+                    'class'             => 'synch_name_checkbox',
+                    'label'             => __( 'Synchronize Item Names', 'woocommerce-dinkassa-integration' ),
+                    'default'           => 'yes',
+                    'description'       => __( 'Synchronize item names in WooCommerce and Dinkassa.se.', 'woocommerce-dinkassa-integration' ),
                 ),
                 'log_wc_events' => array(
                     'title'             => __( 'Log events', 'woocommerce-dinkassa-integration' ),
@@ -157,76 +185,56 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
 
         /**
          * Santize our settings
+         * @param $settings
+         * @return
          * @see process_admin_options()
          */
         public function sanitize_settings( $settings ) {
             return $settings;
         }
 
-		private function is_hexdigit($ch)
-		{
-			return ($ch >= '0' && $ch <= '9') || ($ch >= 'A' && $ch <= 'F') || ($ch >= 'a' && $ch <= 'f');
-		}
-		
         /**
          * Validate the machine key
+         * @param $key
+         * @return string
          * @see validate_settings_fields()
          */
         public function validate_machine_id_field( $key ) {
             // get the posted value
             $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
-            if (isset( $value ) && strlen($value) > 0) {
-				$count = 0;
-				$char_array = str_split($value);
-				foreach ($char_array as $char)
-				{
-					if ($this->is_hexdigit($char))
-						$count++;
-					else if ($char != '-') {
-						$field_name = $this->form_fields[$key]['title'];
-						$message = 'Error: Non-hexadecimal digit \'' . $char. '\' found in ' . $field_name;
-						$this->dinkassa_settings_error($message);
-						return $value;
-					}
-				}
-				if ($count < 32)
-				{
-					$field_name = $this->form_fields[$key]['title'];
-                    $this->dinkassa_settings_error('Error: Too few digits in ' . $field_name);
-				}
-				else if ($count > 32)
-				{
-					$field_name = $this->form_fields[$key]['title'];
-					$this->dinkassa_settings_error('Error: Too many digits in ' . $field_name);
-				}
-			}
+            $pattern = "/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/";
+            if (! preg_match($pattern, $value))
+            {
+                $this->dinkassa_settings_error("Machine ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            }
             return $value;
         }
 
         public function validate_machine_key_field( $key ) {
             // get the posted value
             $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
-            if (isset( $value ) && strlen($value) > 0) {
-                $char_array = str_split($value);
-                foreach ($char_array as $char) {
-                    if (! $this->is_hexdigit($char))
-                    {
-                        $field_name = $this->form_fields[$key]['title'];
-                        $message = 'Error: Non-hexadecimal digit \'' . $char. '\' found in ' . $field_name;
-                        $this->dinkassa_settings_error($message);
-                        return $value;
-                    }
-                }
+            $pattern = "/[0-9a-fA-F]{32}/";
+            if (! preg_match($pattern, $value))
+            {
+                $this->dinkassa_settings_error("Machine key must be a 32-digit hexadecimal number");
             }
             return $value;
         }
 
         /**
          * Validate the integrator id
+         * @param $key
+         * @return string
          * @see validate_settings_fields()
          */
         public function validate_integrator_id_field( $key ) {
-            return $this->validate_machine_id_field($key);
+            $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
+            $pattern = "/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/";
+            if (! preg_match($pattern, $value))
+            {
+                $this->dinkassa_settings_error("Integrator ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
+            }
+            return $value;
         }
 
         private function dinkassa_settings_error($message)
@@ -263,26 +271,20 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
 
         public function process_dinkassa_options()
         {
-            global $background_process, $synchronizing;
             $machine_id = $this->settings['machine_id'];
             $machine_key = $this->settings['machine_key'];
             $integrator_id = $this->settings['integrator_id'];
             $synchronize = $this->settings['synchronize'];
+            $synch_prices = $this->settings['synchronize_prices'];
+            $sync_names = $this->settings['synchronize_names'];
             $log_wc_events = $this->settings['log_wc_events'];
             update_option('machine_id', $machine_id);
             update_option('machine_key', $machine_key);
             update_option('integrator_id', $integrator_id);
             update_option('synchronize', $synchronize);
+            update_option('synch_prices', $synch_prices);
+            update_option('synch_desc', $sync_names);
             update_option('log_wc_events', $log_wc_events);
-            if (! empty($background_process)) {
-                if ($synchronize === 'no')
-                    $background_process->cancel_process();
-                else if (WP_DEBUG) {
-                    $background_process->push_to_queue(1);
-                    $background_process->save()->dispatch();
-                }
-            }
-            $synchronizing = $synchronize === 'yes';
         }
     }
 endif;

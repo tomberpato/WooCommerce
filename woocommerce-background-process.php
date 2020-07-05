@@ -9,7 +9,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
     {
         protected $action = 'woocommerce_background_process';
 
-        private bool $log_woocommerce_events;
+        private $log_woocommerce_events;
 
         public function __construct()
         {
@@ -21,9 +21,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * @var array $wc_product_id_map
          * @var int[] $crud_products
          */
-        private array $wc_product_id_map; // Maps Dinkassa.se inventoryitem IDs to WooCommerce product IDs
+        private $wc_product_id_map; // Maps Dinkassa.se inventoryitem IDs to WooCommerce product IDs
 
-        private array $crud_products; // Array of products (IDs) with pending CRUD operations
+        private $crud_products; // Array of products (IDs) with pending CRUD operations
 
         /**
          * @inheritDoc
@@ -34,14 +34,14 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             // TODO: Implement task() method.
 
             // Update products and categories only if the synchronize
-            // flag is true and a user is not logged in, unless WP_DEBUG
-            // is true. We don't want the process and the user updating
-            // the database simultaneously. The process will resume
-            // updating when the user logs out.
+            // flag is true and a user is not logged in, The process
+            // will resume updating when the user logs out.
             $do_update_products_and_categories = get_option('synchronize') === 'yes'
-                                             && (get_option('user_logged_in') === 'no' || WP_DEBUG);
+                                              && get_option('user_logged_in') === 'no';
             if ($do_update_products_and_categories)
             {
+                if (WP_DEBUG)
+                    $this->background_process_logger('Task() executed at ');
                 $this->update_wc_products_and_categories();
                 sleep(UPDATE_DELAY);
                 return $item;
@@ -144,7 +144,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             date_default_timezone_set('Europe/Stockholm');
             $date_time = date("Y-m-d H:i:s");
             $log_file = plugin_dir_path( __FILE__ ) . 'woocommerce-logger.txt';
-            file_put_contents($log_file, __CLASS__ . $message . $date_time . "\r\n", FILE_APPEND);
+            file_put_contents($log_file, $message . $date_time . "\r\n", FILE_APPEND);
         }
 
         /**
@@ -211,15 +211,15 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         /**
          * Creates/updates a product category and its custom fields. If the category
          * has a parent category the function will recursively create it first.
-         * All WooCommerce product categories have 4 custom fields: AccountNumber,
-         * OnlyAllowCategories, DefaultVatPercentage and CategoryId.
+         * All WooCommerce product categories have 5 custom fields: AccountNumber,
+         * OnlyAllowCategories, DefaultVatPercentage, CategoryId and LastModifiedTime.
          *
          * @param string $category_id Dinkassa.se category ID
          * @param array $dinkassa_category_id_map
          * @param WP_Term[] $wc_categories
          * @return mixed array('term_id' => int, 'term_taxonomy_id' => int) or WP_Error
          */
-        private function insert_wc_product_category($category_id, $dinkassa_category_id_map, $wc_categories)
+        private function update_wc_product_category($category_id, $dinkassa_category_id_map, $wc_categories)
         {
             if (empty($category_id))
                 return array('term_id' => 0, 'term_taxonomy_id' => '');
@@ -227,7 +227,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 $category = $dinkassa_category_id_map[$category_id];
                 $parent_category_id = $category['ParentCategoryId'];
                 $category_name = $category['Name'];
-                $parent_term = $this->insert_wc_product_category($parent_category_id, $dinkassa_category_id_map, $wc_categories);
+                $parent_term = $this->update_wc_product_category($parent_category_id, $dinkassa_category_id_map, $wc_categories);
                 $category_term = term_exists($category_name, 'product_cat');
                 $parent_term_id = (int)$parent_term['term_id'];
                 $new_category = empty($wc_categories[$category_id]);
@@ -292,9 +292,17 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $boolean_value = (bool)$category['OnlyAllowCategories'];
                         $default_vat_percentage = $category['DefaultVatPercentage'];
                         $only_allow_categories = $boolean_value ? 'on' : ''; // Checkbox value
-                        $modified = false;
-                        if ($this->log_woocommerce_events && ! $new_category)
+                        if ($new_category)
                         {
+                            $current_datetime = date('Y-m-d H:i:s');
+                            add_term_meta($term_id, 'wh_meta_account', $account_number);
+                            add_term_meta($term_id, 'wh_meta_only_cat', $only_allow_categories);
+                            add_term_meta($term_id, 'wh_meta_default_vat', $default_vat_percentage);
+                            add_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
+                            add_term_meta($term_id, 'wh_meta_cat_id', $category_id);
+                            add_term_meta($term_id, 'wh_meta_pending_crud', 0);
+                        }
+                        else {
                             // Check if any custom category fields have been updated in Dinkassa.se
                             $current_acc_nr = get_term_meta($term_id, 'wh_meta_account', true);
                             $current_only_cat = get_term_meta($term_id, 'wh_meta_only_cat', true);
@@ -303,27 +311,22 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             $modified = $account_number != $current_acc_nr
                                      || $only_allow_categories != $current_only_cat
                                      || $default_vat_percentage != $current_default_vat;
-                            $wc_category_modified_timestamp = strtotime($current_datetime) + UTC2_OFFSET;
-                            $dinkassa_category_modified_timestamp = strtotime($category['LastModifiedDateTime']);
-                            if ($modified && $dinkassa_category_modified_timestamp >= $wc_category_modified_timestamp)
+                            if ($this->log_woocommerce_events && $modified)
                             {
-                                $this->log_category_update('category-updated', $category_name, $category_id);
-                                $log_file = plugin_dir_path( __FILE__ ) . 'cat_modified.txt';
-                                $data = $dinkassa_category_modified_timestamp . '    ' . $wc_category_modified_timestamp;
-                                file_put_contents($log_file, $data . "\r\n", FILE_APPEND);
+                                $wc_category_modified_timestamp = strtotime($current_datetime) + UTC2_OFFSET;
+                                $dinkassa_category_modified_timestamp = strtotime($category['LastModifiedDateTime']);
+                                if ($dinkassa_category_modified_timestamp > $wc_category_modified_timestamp)
+                                {
+                                    $this->log_category_update('category-updated', $category_name, $category_id);
+                                }
                             }
-                        }
-                        // Add/update custom category fields
-                        if ($modified || $new_category) {
-                            $current_datetime = date('Y-m-d H:i:s');
-                            update_term_meta($term_id, 'wh_meta_account', $account_number);
-                            update_term_meta($term_id, 'wh_meta_only_cat', $only_allow_categories);
-                            update_term_meta($term_id, 'wh_meta_default_vat', $default_vat_percentage);
-                            update_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
-                        }
-                        if ($new_category) {
-                            add_term_meta($term_id, 'wh_meta_cat_id', $category_id);
-                            add_term_meta($term_id, 'wh_meta_pending_crud', 0);
+                            if ($modified) {
+                                $current_datetime = date('Y-m-d H:i:s');
+                                update_term_meta($term_id, 'wh_meta_account', $account_number);
+                                update_term_meta($term_id, 'wh_meta_only_cat', $only_allow_categories);
+                                update_term_meta($term_id, 'wh_meta_default_vat', $default_vat_percentage);
+                                update_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
+                            }
                         }
                     }
                     return $category_term;
@@ -416,7 +419,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     else {
                         // Delete custom product fields before deleting product.
                         $product_info = get_product_info($product_id);
-                        delete_custom_product_fields($product_id);
                         if ($wc_product->delete(true))
                         {
                             if ($this->log_woocommerce_events) {
@@ -548,7 +550,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     if ($pending_crud_operation & 0x1)
                         create_dinkassa_product_category($term_id);
                     else if ($pending_crud_operation & 0x2)
-                        update_dinkassa_product_category($term_id);
+                        update_dinkassa_category($term_id);
                 }
             }
         }
@@ -601,6 +603,8 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         private function update_wc_products_and_categories()
         {
             $this->create_product_id_map();
+            $synchronize_description = get_option('synch_desc') === 'yes';
+            $synchronize_prices = get_option('synch_prices') === 'yes';
             $dinkassa_categories = $this->get_dinkassa_categories();
             $woocommerce_categories = $this->get_wc_category_list();
 
@@ -612,10 +616,10 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             remove_action('created_product_cat', 'create_dinkassa_product_category');
             remove_action('woocommerce_update_product', 'update_dinkassa_product');
 
-            // Create and update product categories
+            // Create/update product categories
             foreach ($dinkassa_categories as $category_id => $category)
             {
-                $this->insert_wc_product_category($category_id, $dinkassa_categories, $woocommerce_categories);
+               $this->update_wc_product_category($category_id, $dinkassa_categories, $woocommerce_categories);
             }
             $dinkassa_products = $this->get_json_data('inventoryitem');
             if (! empty($dinkassa_products)) {
@@ -633,7 +637,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $price_including_vat = $dinkassa_product->{'PriceIncludingVat'};
                     $pickup_price_including_vat = $dinkassa_product->{'PickupPriceIncludingVat'};
                     $vat_percentage = $dinkassa_product->{'VatPercentage'};
-                    $creation_date_time = $dinkassa_product->{'CreatedDateTime'};
                     $quantity_in_stock_current = (int)$dinkassa_product->{'QuantityInStockCurrent'};
                     $extra_category_ids = $dinkassa_product->{'ExtraCategoryIds'};
                     $supplier_name = $dinkassa_product->{'SupplierName'};
@@ -642,17 +645,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $visible_on_sales_menu = $dinkassa_product->{'VisibleOnSalesMenu'};
                     $visibility = empty($visible_on_sales_menu)? 'hidden' : 'visible';
                     $stock_status = $quantity_in_stock_current > 0 ? 'instock' : 'outofstock';
-                    if (empty($vat_percentage))
-                    {
-                        // Set VAT % to default VAT % of product category
-                        $term = term_exists($category_name, 'product_cat');
-                        if (! $term)
-                            $vat_percentage = 0;
-                        else {
-                            $term_id = $term['term_id'];
-                            $vat_percentage = get_term_meta($term_id, 'wh_meta_default_vat', true);
-                        }
-                    }
                     $term = term_exists($category_name, 'product_cat');
                     if (empty($term))
                         continue; // Error
@@ -678,15 +670,12 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $custom_field_data['id'] = $id;
                         $custom_field_data['pending_crud'] = 0;
                         $custom_field_data['quantity_change'] = 0;
+                        $custom_field_data['priceincludingvat'] = $price_including_vat; // Keep track of current price in Dinkassa.se
                         $wc_category_ids = $this->get_wc_category_ids($category_id, $dinkassa_categories, $extra_category_ids);
                         $wc_product = new WC_Product_Simple();
                         $wc_product->set_name($description);
                         $wc_product->set_status('publish');
-                        $wc_product->set_price($price_including_vat);
-                        $wc_product->set_sale_price($price_including_vat);
                         $wc_product->set_regular_price($price_including_vat);
-                        $wc_product->set_description($description);
-                        $wc_product->set_short_description($description);
                         $wc_product->set_featured(true);
                         $wc_product->set_menu_order($sorting_weight);
                         $wc_product->set_manage_stock(true);
@@ -694,9 +683,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $wc_product->set_stock_status($stock_status);
                         $wc_product->set_reviews_allowed(true);
                         $wc_product->set_backorders('no');
-                        $wc_product->set_date_created($creation_date_time);
                         $wc_product->set_category_ids($wc_category_ids);
-                        $wc_product->set_date_modified($last_modified_date);
                         try {
                             $wc_product->set_catalog_visibility($visibility);
                         } catch (WC_Data_Exception $e) {
@@ -718,8 +705,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         {
                             $wc_product = wc_get_product($product_id);
                             // Check if any product properties/custom fields have been updated in Dinkassa.se
-                            $modified = $wc_product->get_description() != $description
-                                     || $wc_product->get_price() != $price_including_vat
+                            $modified = $wc_product->get_regular_price() != $price_including_vat
                                      || $wc_product->get_stock_quantity() != $quantity_in_stock_current
                                      || $wc_product->get_catalog_visibility() != $visibility;
                             if (! $modified)
@@ -735,14 +721,13 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                     }
                                 }
                             }
+                            $custom_field_data['priceincludingvat'] = $price_including_vat;
                             if ($this->log_woocommerce_events && $modified)
                             {
-                                // Need to add offset (+2h) to the time stamp because WooCommerce
-                                // doesn't set the correct time zone for datetime objects.
                                 $wc_last_modified_datetime = $wc_product->get_date_modified();
-                                $wc_last_modified_timestamp = $wc_last_modified_datetime->getTimestamp() + UTC2_OFFSET;
+                                $wc_last_modified_timestamp = $wc_last_modified_datetime->getTimestamp();
                                 $dinkassa_last_modified_timestamp = strtotime($last_modified_date);
-                                if ($dinkassa_last_modified_timestamp >= $wc_last_modified_timestamp) {
+                                if ($dinkassa_last_modified_timestamp > $wc_last_modified_timestamp) {
                                     $product_info = get_product_info($product_id);
                                     if ($wc_product->get_stock_quantity() != $quantity_in_stock_current)
                                         woocommerce_event_logger('stock-quantity-updated', 200, $product_info, true);
@@ -751,13 +736,11 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                 }
                             }
                             if ($modified) {
-                                $wc_product->set_name($description);
-                                $wc_product->set_price($price_including_vat);
+                                if ($synchronize_prices)
+                                    $wc_product->set_regular_price($price_including_vat);
+                                if ($synchronize_description)
+                                    $wc_product->set_name($description);
                                 $wc_product->set_stock_status($stock_status);
-                                $wc_product->set_sale_price($price_including_vat);
-                                $wc_product->set_regular_price($price_including_vat);
-                                $wc_product->set_description($description);
-                                $wc_product->set_short_description($description);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
                                 try {
                                     $wc_product->set_catalog_visibility($visibility);
@@ -824,6 +807,8 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         protected function complete() {
             parent::complete();
             // Show notice to user or perform some other arbitrary task...
+            if (WP_DEBUG)
+                $this->background_process_logger('Task() shut down at ');
         }
     }
 endif;

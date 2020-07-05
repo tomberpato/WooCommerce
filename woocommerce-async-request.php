@@ -15,13 +15,16 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
 {
     protected $action = 'woocommerce_async_http_request';
 
-    private string $machine_id;
+    private $machine_id;
 
-    private string $machine_key;
+    private $machine_key;
 
-    private string $integrator_id;
+    private $integrator_id;
 
-    private bool $log_woocommerce_events;
+    /**
+     * @var bool $log_woocommerce_events
+     */
+    private $log_woocommerce_events;
 
     public function __construct()
     {
