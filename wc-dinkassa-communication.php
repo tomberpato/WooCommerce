@@ -953,7 +953,7 @@ function woocommerce_save_product_meta_data($post_id)
         foreach ($custom_field_names as $field_name) {
             $meta_key = META_KEY_PREFIX . $field_name;
             $posted_value = $_POST[$meta_key];
-            if (!is_null($posted_value) || $posted_value == '0')
+            if (!empty($posted_value))
                 $meta_value = sanitize_text_field($posted_value);
             else
                 $meta_value = '';

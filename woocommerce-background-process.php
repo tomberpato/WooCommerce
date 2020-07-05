@@ -659,6 +659,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         'barcode5' => $bar_code5,
                         'productcode' => $product_code,
                         'description' => $description,
+                        'priceincludingvat' => $price_including_vat,
                         'pickuppriceincludingvat' => $pickup_price_including_vat,
                         'suppliername' => $supplier_name,
                         'categoryname' => $category_name,
@@ -670,7 +671,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $custom_field_data['id'] = $id;
                         $custom_field_data['pending_crud'] = 0;
                         $custom_field_data['quantity_change'] = 0;
-                        $custom_field_data['priceincludingvat'] = $price_including_vat; // Keep track of current price in Dinkassa.se
                         $wc_category_ids = $this->get_wc_category_ids($category_id, $dinkassa_categories, $extra_category_ids);
                         $wc_product = new WC_Product_Simple();
                         $wc_product->set_name($description);
@@ -703,51 +703,49 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $product_id = $this->wc_product_id_map[$id];
                         if (! $this->pending_crud_operations($product_id))
                         {
-                            $wc_product = wc_get_product($product_id);
                             // Check if any product properties/custom fields have been updated in Dinkassa.se
-                            $modified = $wc_product->get_regular_price() != $price_including_vat
+                            $wc_product = wc_get_product($product_id);
+                            $modified = $wc_product->get_name() != $description && $synchronize_description
+                                     || $wc_product->get_regular_price() != $price_including_vat && $synchronize_prices
                                      || $wc_product->get_stock_quantity() != $quantity_in_stock_current
                                      || $wc_product->get_catalog_visibility() != $visibility;
-                            if (! $modified)
+                            if ($modified)
                             {
-                                foreach ($custom_field_data as $field_name => $value)
-                                {
-                                    $meta_key = META_KEY_PREFIX . $field_name;
-                                    $field_value = get_post_meta($product_id, $meta_key, true);
-                                    if ($custom_field_data[$field_name] != $field_value)
-                                    {
-                                        $modified = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            $custom_field_data['priceincludingvat'] = $price_including_vat;
-                            if ($this->log_woocommerce_events && $modified)
-                            {
-                                $wc_last_modified_datetime = $wc_product->get_date_modified();
-                                $wc_last_modified_timestamp = $wc_last_modified_datetime->getTimestamp();
-                                $dinkassa_last_modified_timestamp = strtotime($last_modified_date);
-                                if ($dinkassa_last_modified_timestamp > $wc_last_modified_timestamp) {
-                                    $product_info = get_product_info($product_id);
-                                    if ($wc_product->get_stock_quantity() != $quantity_in_stock_current)
-                                        woocommerce_event_logger('stock-quantity-updated', 200, $product_info, true);
-                                    else
-                                        woocommerce_event_logger('product-updated', 200, $product_info, true);
-                                }
-                            }
-                            if ($modified) {
-                                if ($synchronize_prices)
-                                    $wc_product->set_regular_price($price_including_vat);
                                 if ($synchronize_description)
                                     $wc_product->set_name($description);
+                                if ($synchronize_prices)
+                                    $wc_product->set_regular_price($price_including_vat);
                                 $wc_product->set_stock_status($stock_status);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
                                 try {
                                     $wc_product->set_catalog_visibility($visibility);
                                 } catch (WC_Data_Exception $e) {
                                 }
+                            }
+                            foreach ($custom_field_data as $field_name => $value)
+                            {
+                                $meta_key = META_KEY_PREFIX . $field_name;
+                                $field_value = get_post_meta($product_id, $meta_key, true);
+                                if ($custom_field_data[$field_name] != $field_value)
+                                {
+                                    $modified = true;
+                                    $updated_value = $custom_field_data[$field_name];
+                                    update_post_meta($product_id, $meta_key, $updated_value);
+                                }
+                            }
+                            if ($modified)
+                            {
+                                if ($this->log_woocommerce_events)
+                                {
+                                    $wc_last_modified_datetime = $wc_product->get_date_modified();
+                                    $wc_last_modified_timestamp = $wc_last_modified_datetime->getTimestamp();
+                                    $dinkassa_last_modified_timestamp = strtotime($last_modified_date);
+                                    if ($dinkassa_last_modified_timestamp > $wc_last_modified_timestamp) {
+                                        $product_info = get_product_info($product_id);
+                                        woocommerce_event_logger('product-updated', 200, $product_info, true);
+                                    }
+                                }
                                 $wc_product->save();
-                                $this->update_custom_product_fields($product_id, $custom_field_data);
                             }
                         }
                         // Remove product with ID = $id from $wc_product_id_map. The products
