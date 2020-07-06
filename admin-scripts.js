@@ -6,7 +6,7 @@ jQuery(document).ready(function($) {
 
 		if (machineId === '' || machineKey === '' || integratorId === '')
 		{
-			alert("Please enter all Dinkassa.se API-keys");
+			alert("Please enter all API-keys");
 			return;
 		}
 		let ajax_data = {
@@ -86,13 +86,21 @@ jQuery(document).ready(function($){
 });
 
 jQuery(document).ready(function($) {
-	$("input.synch_checkbox").click(function() {
-		let value = $(this).is(':checked');
-		$("input.machine_id").attr("required", value);
-		$("input.machine_key").attr("required", value);
-		$("input.integrator_id").attr("required", value);
+	let sync_checkbox = $("input.synch_checkbox");
+	let value = sync_checkbox.is(':checked');
+	set_required_attribute($, value);
+	sync_checkbox.click(function() {
+		value = sync_checkbox.is(':checked');
+		set_required_attribute($, value);
 	});
 });
+
+function set_required_attribute($, value)
+{
+	$("input.machine_id").attr("required", value);
+	$("input.machine_key").attr("required", value);
+	$("input.integrator_id").attr("required", value);
+}
 
 jQuery(document).ready(function($) {
 	let category_input = $("#_custom_pf_categoryname");

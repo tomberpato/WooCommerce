@@ -433,13 +433,13 @@ function wc_api_product_category_data_filter($data, $wc_api_product)
     return $category_data;
 }
 
-add_action( 'add_meta_boxes_product', 'wc_remove_metaboxes_edit_product', 9999 );
+/*add_action( 'add_meta_boxes_product', 'wc_remove_metaboxes_edit_product', 9999 );
 function wc_remove_metaboxes_edit_product() {
 
-    // e.g. remove product tags
+    // Remove product tags
     remove_meta_box( 'tagsdiv-product_tag', 'product', 'side' );
 
-}
+}*/
 
 add_action('wp_login', 'wordpress_login_handler', 10, 2);
 function wordpress_login_handler($user_name, $user)
