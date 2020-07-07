@@ -42,8 +42,6 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
          * @return void
          */
         public function init_form_fields() {
-            $synchronizing = get_option('synchronize') === 'yes';
-
             $this->form_fields = array(
                 'machine_key' => array(
                     'title'             => __( 'Machine Key', 'woocommerce-dinkassa-integration' ),
@@ -53,7 +51,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'description'       => __( 'Each cash register machine has a unique, secret key associated with a specific machine ID.', 'woocommerce-dinkassa-integration' ),
                     'desc_tip'          => true,
                     'custom_attributes' => array(
-                          'pattern' => "[0-9a-fA-F]{32}",
+                          'pattern' => "\s*[0-9a-fA-F]{32}\s*",
                           'title' => 'Machine key must be a 32-digit hexadecimal number '
                     ),
                     'default'           => ''
@@ -64,7 +62,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'css'               => 'height: 30px;',
                     'class'             => 'machine_id',
                     'custom_attributes' => array(
-                          'pattern' => "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+                          'pattern' => "\s*[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\s*",
                           'title' => 'The machine ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx'
                     ),
                     'description'       => __( 'Determines which machine the API can read data from or write data to.', 'woocommerce-dinkassa-integration'),
@@ -77,7 +75,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'css'               => 'height: 30px;',
                     'class'             => 'integrator_id',
                     'custom_attributes' => array(
-                          'pattern' => "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+                          'pattern' => "\s*[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\s*",
                           'title' => 'The integrator ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxx'
                     ),
                     'description'       => __( 'A unique key representing a system of one or more machines that can connect to the API.', 'woocommerce-dinkassa-integration' ),
@@ -188,51 +186,6 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
          */
         public function sanitize_settings( $settings ) {
             return $settings;
-        }
-
-        /**
-         * Validate the machine key
-         * @param $key
-         * @return string
-         * @see validate_settings_fields()
-         */
-        public function validate_machine_id_field( $key ) {
-            // get the posted value
-            $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
-         /*   $pattern = "/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/";
-            if (! preg_match($pattern, $value))
-            {
-                $this->dinkassa_settings_error("Machine ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            }*/
-            return $value;
-        }
-
-        public function validate_machine_key_field( $key ) {
-            // get the posted value
-            $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
-         /*   $synchronize = $this->settings['synchronize'] === 'yes';
-            $pattern = "/[0-9a-fA-F]{32}/";
-            if ($synchronize) {
-                if (!preg_match($pattern, $value)) {
-                    $this->dinkassa_settings_error("Blablablablabla");
-                }
-            }*/
-            return $value;
-        }
-
-        /**
-         * Validate the integrator id
-         * @param $key
-         * @return string
-         * @see validate_settings_fields()
-         */
-        public function validate_integrator_id_field( $key ) {
-            $value = trim($_POST[ $this->plugin_id . $this->id . '_' . $key ]);
-      /*      $pattern = "/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/";
-            if (! preg_match($pattern, $value)) {
-                $this->dinkassa_settings_error("Integrator ID must have the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx");
-            }*/
-            return $value;
         }
 
         private function dinkassa_settings_error($message)

@@ -711,6 +711,7 @@ function woocommerce_product_pickup_price_field()
 {
     woocommerce_wp_select(
         array(
+            'desc_tip' => true,
             'id' => META_KEY_PREFIX . 'vatpercentage',
             'label' => __( 'VAT percentage', 'woocommerce' ),
             'options' => array(
@@ -718,7 +719,8 @@ function woocommerce_product_pickup_price_field()
                 '6'  => __( '6%', 'woocommerce' ),
                 '12' => __( '12%', 'woocommerce' ),
                 '25' => __( '25%', 'woocommerce' )
-            )
+            ),
+            'description' => 'The VAT percentage of the inventoryitem',
         )
     );
     woocommerce_wp_text_input(
@@ -845,8 +847,10 @@ function woocommerce_product_custom_fields()
     );
     woocommerce_wp_text_input(
         array(
+            'desc_tip' => true,
             'id' => META_KEY_PREFIX . 'suppliername',
             'label' => __('Supplier Name', 'woocommerce'),
+            'description' => 'The name of the supplier',
         )
     );
     woocommerce_wp_text_input(
@@ -887,8 +891,10 @@ function woocommerce_product_custom_fields()
     );
     woocommerce_wp_text_input(
         array(
+            'desc_tip' => true,
             'id' => META_KEY_PREFIX . 'externalproductcode',
-            'label' => __('External Product Code', 'woocommerce')
+            'label' => __('External Product Code', 'woocommerce'),
+            'description' => 'Unique code used by the product. If no such code exists, provide another unique value.'
         )
     );
     woocommerce_wp_hidden_input(

@@ -488,6 +488,29 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
+         * Returns true if the category ids of an inventoryitem and the category ids
+         * of the corresponding WooCommerce product aren't the same, false if otherwise.
+         *
+         * @return bool
+         * @var WC_Product_Simple $wc_product
+         * @var array $inventoryitem_cats
+         */
+        private function categories_changed($inventoryitem_cats, $wc_product)
+        {
+            $category_ids = $wc_product->get_category_ids();
+            if (count($inventoryitem_cats) != count($category_ids))
+                return true;
+            else {
+                foreach ($category_ids as $category_id)
+                {
+                    if (! array_key_exists($category_id, $inventoryitem_cats))
+                        return true;
+                }
+                return false;
+            }
+        }
+
+        /**
          * Checks if there are any pending CRUD operations, such as updates,
          * creations, deletions or changes in stock quantity. If there are any,
          * these will be processed by sending the appropriate asynchronous
@@ -666,12 +689,12 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         'vatpercentage' => $vat_percentage,
                         'current_cat_term_id' => $category_id
                     );
+                    $wc_category_ids = $this->get_wc_category_ids($category_id, $dinkassa_categories, $extra_category_ids);
                     if (empty($this->wc_product_id_map[$id])) {
                         // New product. Create and save it in the database
                         $custom_field_data['id'] = $id;
                         $custom_field_data['pending_crud'] = 0;
                         $custom_field_data['quantity_change'] = 0;
-                        $wc_category_ids = $this->get_wc_category_ids($category_id, $dinkassa_categories, $extra_category_ids);
                         $wc_product = new WC_Product_Simple();
                         $wc_product->set_name($description);
                         $wc_product->set_status('publish');
@@ -689,7 +712,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         } catch (WC_Data_Exception $e) {
                         }
                         $product_id = $wc_product->save();
-                        $this->update_custom_product_fields($product_id, $custom_field_data);
+                        $this->add_custom_product_fields($product_id, $custom_field_data);
                         if ($this->log_woocommerce_events) {
                             $product_info = get_product_info($product_id);
                             woocommerce_event_logger('product-created', 200, $product_info, true);
@@ -703,12 +726,15 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $product_id = $this->wc_product_id_map[$id];
                         if (! $this->pending_crud_operations($product_id))
                         {
+                            /** @var WC_Product_Simple $wc_product */
+
                             // Check if any product properties/custom fields have been updated in Dinkassa.se
                             $wc_product = wc_get_product($product_id);
                             $modified = $wc_product->get_name() != $description && $synchronize_description
                                      || $wc_product->get_regular_price() != $price_including_vat && $synchronize_prices
                                      || $wc_product->get_stock_quantity() != $quantity_in_stock_current
-                                     || $wc_product->get_catalog_visibility() != $visibility;
+                                     || $wc_product->get_catalog_visibility() != $visibility
+                                     || $this->categories_changed($wc_category_ids, $wc_product);
                             if ($modified)
                             {
                                 if ($synchronize_description)
@@ -717,6 +743,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                     $wc_product->set_regular_price($price_including_vat);
                                 $wc_product->set_stock_status($stock_status);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
+                                $wc_product->set_category_ids($wc_category_ids);
                                 try {
                                     $wc_product->set_catalog_visibility($visibility);
                                 } catch (WC_Data_Exception $e) {
@@ -765,21 +792,17 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Creates/updates custom fields of a product. For new products, two
-         * extra fields are added, 'pending_crud' and 'quantity_change', that
-         * are used to keep track of pending CRUD operations and change in
-         * stock quantity in case Dinkassa.se isn't responding or synchronization
-         * is turned off.
+         * Creates custom fields of a WooCommerce product and initializes them.
          *
-         * @param int $product_id
+         * @param int $post_id
          * @param array $custom_product_fields An array(field_name => field_value)
          */
-        private function update_custom_product_fields($product_id, $custom_product_fields)
+        private function add_custom_product_fields($post_id, $custom_product_fields)
         {
             foreach ($custom_product_fields as $field_name => $value)
             {
                 $meta_key = META_KEY_PREFIX . $field_name;
-                update_post_meta($product_id, $meta_key, $value);
+                add_post_meta($post_id, $meta_key, $value);
             }
         }
 
