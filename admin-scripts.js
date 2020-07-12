@@ -112,13 +112,9 @@ jQuery(document).ready(function($) {
 			let current_cat = category_input.val().trim();
 			$(this).parent().css('font-weight', 'normal');
 			if (selected_category.localeCompare(current_cat) === 0) {
-				// Current category checkbox unchecked. Set category to blank
-				let selector = "label.selectit:contains(Uncategorized) > input";
-				$(selector).prop('checked', true);
-				$(selector).parent().css('font-weight', 'bold');
-				let category_term_id = $(selector).val();
-				$("#_custom_pf_current_cat_term_id").val(category_term_id);
-				category_input.prop("selectedIndex", -1);
+				// Main category unchecked. Check 'Uncategorized' checkbox
+				// and set main category option to blank
+				select_uncategorized_category($);
 			}
 		}
 	})
@@ -126,23 +122,38 @@ jQuery(document).ready(function($) {
 
 jQuery(document).ready(function($) {
 	let category_input = $("#_custom_pf_categoryname");
-	let category_term_id_input = $("#_custom_pf_current_cat_term_id");
-	let selector = 'input#in-product_cat-' + category_term_id_input.val();
-	$(selector).parent().css('font-weight', 'bold');
+	let category_id_input = $("#_custom_pf_current_cat_term_id");
+	if (category_id_input.val() === "")
+		select_uncategorized_category($); // New product. Set main category to 'Uncategorized'
+	else {
+		let category_id = category_id_input.val();
+		let selector = 'input#in-product_cat-' + category_id;
+		$(selector).parent().css('font-weight', 'bold');
+	}
 	category_input.on('change', function(event) {
-		let selected_cat = $(this).val().trim();
-		let category_term_id = category_term_id_input.val();
-		selector = 'input#in-product_cat-' + category_term_id;
+		let selected_category = $(this).val().trim();
+		let category_id = category_id_input.val();
+		let selector = 'input#in-product_cat-' + category_id;
 		$(selector).prop('checked', false);
 		$(selector).parent().css('font-weight', 'normal');
-		selector = "label.selectit:contains(" + selected_cat + ") > input";
+		selector = "label.selectit:contains(" + selected_category + ") > input";
 		$(selector).prop('checked', true);
 		$(selector).parent().css('font-weight', 'bold');
-		if (selected_cat.localeCompare('Uncategorized') === 0)
+		if (selected_category.localeCompare('Uncategorized') === 0)
 		{
 			category_input.prop("selectedIndex", -1);
 		}
-		category_term_id = $(selector).val();
-		category_term_id_input.val(category_term_id)
+		category_id = $(selector).val();
+		category_id_input.val(category_id)
 	})
 })
+
+function select_uncategorized_category($)
+{
+	$("#_custom_pf_categoryname").prop("selectedIndex", -1);
+	let selector = "label.selectit:contains(Uncategorized) > input";
+	$(selector).prop('checked', true);
+	$(selector).parent().css('font-weight', 'bold');
+	let category_term_id = $(selector).val();
+	$("#_custom_pf_current_cat_term_id").val(category_term_id);
+}

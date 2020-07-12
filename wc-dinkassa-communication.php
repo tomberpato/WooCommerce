@@ -3,7 +3,7 @@
 * Plugin Name: WooCommerce-ES Kassasystem Integration
 * Plugin URI: https://github.com/tomberpato/WooCommerce
 * Description: A plugin for managing communication between WooCommerce and the Dinkassa.se server.
-* Version: 2.0.0
+* Version: 2.1.0
 * Author: Tom Boye
 * License: None
 */
@@ -159,8 +159,8 @@ function plugins_loaded_integration() {
 }
 add_action('woocommerce_new_order', 'update_dinkassa_product_inventory', 10, 2);
 add_action('woocommerce_update_product', 'update_dinkassa_product', 10, 2);
+add_action('edited_product_cat', 'update_dinkassa_category', 10, 1);
 add_action('before_delete_post', 'delete_dinkassa_product', 10, 1);
-add_action('edited_product_cat', 'save_custom_category_fields', 10, 1);
 add_action('pre_delete_term', 'delete_dinkassa_product_category', 10, 4);
 add_action('init', 'register_custom_taxonomy', 10, 0);
 add_action('created_product_cat', 'create_dinkassa_product_category', 10, 2);
@@ -433,14 +433,6 @@ function wc_api_product_category_data_filter($data, $wc_api_product)
     return $category_data;
 }
 
-/*add_action( 'add_meta_boxes_product', 'wc_remove_metaboxes_edit_product', 9999 );
-function wc_remove_metaboxes_edit_product() {
-
-    // Remove product tags
-    remove_meta_box( 'tagsdiv-product_tag', 'product', 'side' );
-
-}*/
-
 add_action('wp_login', 'wordpress_login_handler', 10, 2);
 function wordpress_login_handler($user_name, $user)
 {
@@ -612,27 +604,14 @@ function create_category_payload($term_id, $updating = false)
 }
 
 /**
- * Creates a new product category in Dinkassa.se using its REST API.
+ * Creates a new product category in Dinkassa.se.
  *
  * @param int $term_id
  * @param int $tt_id Term taxonomy id
  */
 function create_dinkassa_product_category($term_id, $tt_id = 0)
 {
-    if (isset($_POST['wh_meta_account'])) {
-        // Category created in admin. Get posted custom fields from client.
-        // Custom fields of categories created via endpoints are already
-        // saved in the database.
-        $current_datetime = date('Y-m-d H:i:s');
-        $account_number = $_POST['wh_meta_account'];
-        $only_categories = $_POST['wh_meta_only_cat'];
-        $default_vat = $_POST['wh_meta_default_vat'];
-        add_term_meta($term_id, 'wh_meta_account', $account_number);
-        add_term_meta($term_id, 'wh_meta_only_cat', $only_categories);
-        add_term_meta($term_id, 'wh_meta_default_vat', $default_vat);
-        add_term_meta($term_id, 'wh_meta_pending_crud', 0);
-        add_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
-    }
+    save_custom_category_fields($term_id);
     $json_data = create_category_payload($term_id);
     if (! is_wp_error($json_data)) {
         $opt_headers = array(
@@ -652,19 +631,20 @@ function create_dinkassa_product_category($term_id, $tt_id = 0)
 }
 
 /**
- * Updates a product category in Dinkassa.se using its REST API.
+ * Updates/creates custom product category fields.
  *
  * @param int $term_id
  */
 function save_custom_category_fields($term_id)
 {
-    $current_datetime = date('Y-m-d H:i:s');
-    $wh_meta_account = $_POST['wh_meta_account'];
-    $wh_meta_only_cat = $_POST['wh_meta_only_cat'];
-    $wh_meta_default_vat = $_POST['wh_meta_default_vat'];
-    update_term_meta($term_id, 'wh_meta_account', $wh_meta_account);
-    update_term_meta($term_id, 'wh_meta_only_cat', $wh_meta_only_cat);
-    update_term_meta($term_id, 'wh_meta_default_vat', $wh_meta_default_vat);
+    date_default_timezone_set('Europe/Stockholm'); // Fixed bug
+    $current_datetime = date(DateTimeInterface::ATOM);
+    $meta_account = $_POST['wh_meta_account'];
+    $meta_only_cat = $_POST['wh_meta_only_cat'];
+    $meta_default_vat = $_POST['wh_meta_default_vat'];
+    update_term_meta($term_id, 'wh_meta_account', $meta_account);
+    update_term_meta($term_id, 'wh_meta_only_cat', $meta_only_cat);
+    update_term_meta($term_id, 'wh_meta_default_vat', $meta_default_vat);
     update_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
 }
 
@@ -830,7 +810,7 @@ function woocommerce_product_custom_fields()
                 'readonly' => 'readonly'
             ),
             'desc_tip' => true,
-            'description' => 'Unique 64-bit identification number of each product'
+            'description' => 'Unique 64-bit identification number of each inventoryitem'
         )
     );
     woocommerce_wp_select(
@@ -886,7 +866,7 @@ function woocommerce_product_custom_fields()
             'custom_attributes' => array(
                 'required' => 'required'
             ),
-            'description' => 'Unique code used by the product. If no such code exists, provide another unique value.'
+            'description' => 'Unique product code. If no such code exists, provide another unique value.'
         )
     );
     woocommerce_wp_text_input(
@@ -894,7 +874,7 @@ function woocommerce_product_custom_fields()
             'desc_tip' => true,
             'id' => META_KEY_PREFIX . 'externalproductcode',
             'label' => __('External Product Code', 'woocommerce'),
-            'description' => 'Unique code used by the product. If no such code exists, provide another unique value.'
+            'description' => 'Unique product code. If no such code exists, provide another unique value.'
         )
     );
     woocommerce_wp_hidden_input(
@@ -949,7 +929,6 @@ function woocommerce_save_product_meta_data($post_id)
         'externalproductcode',
         'pickuppriceincludingvat',
         'suppliername',
-        'vatpercentage',
         'current_cat_term_id'
     );
     $updating = true;
@@ -965,6 +944,9 @@ function woocommerce_save_product_meta_data($post_id)
                 $meta_value = '';
             update_post_meta($post_id, $meta_key, esc_attr($meta_value));
         }
+        // Bugfix: VAT% not saved correctly for 0%. Treat value as integer
+        $meta_key = META_KEY_PREFIX . 'vatpercentage';
+        update_post_meta($post_id, $meta_key, (int)$_POST[$meta_key]);
     }
     if (!empty($wc_product)) {
         // Check if product exists or is new
@@ -1165,8 +1147,8 @@ function get_product_info($product_id)
 }
 
 /**
- * Deletes a product in Dinkassa.se using its REST API. The product's
- * custom fields are also removed from the WordPress database.
+ * Deletes a product in Dinkassa.se. The product's custom
+ * fields are also removed from the WordPress database.
  *
  * @param int $post_id
  */
@@ -1189,7 +1171,7 @@ function delete_dinkassa_product($post_id)
 }
 
 //Product Cat Create page
-function wh_taxonomy_add_new_meta_field() {
+function woocommerce_taxonomy_add_new_meta_field() {
     ?>
     <div class="form-field">
         <label for="wh_meta_account"><?php _e('Account number', 'wh'); ?></label>
@@ -1214,7 +1196,7 @@ function wh_taxonomy_add_new_meta_field() {
 }
 
 //Product Cat Edit page
-function wh_taxonomy_edit_meta_field($term) {
+function woocommerce_taxonomy_edit_meta_field($term) {
 
     //getting term ID
     $term_id = $term->term_id;
@@ -1260,11 +1242,12 @@ function wh_taxonomy_edit_meta_field($term) {
     <?php
 }
 
-add_action('product_cat_add_form_fields', 'wh_taxonomy_add_new_meta_field', 10, 1);
-add_action('product_cat_edit_form_fields', 'wh_taxonomy_edit_meta_field', 10, 1);
+add_action('product_cat_add_form_fields', 'woocommerce_taxonomy_add_new_meta_field', 10, 1);
+add_action('product_cat_edit_form_fields', 'woocommerce_taxonomy_edit_meta_field', 10, 1);
 
 // Save extra taxonomy fields callback function.
 function update_dinkassa_category($term_id) {
+    save_custom_category_fields($term_id);
     $json_data = create_category_payload($term_id, true);
     if (! is_wp_error($json_data)) {
         $opt_headers = array(
@@ -1283,12 +1266,9 @@ function update_dinkassa_category($term_id) {
     }
 }
 
-add_action('edited_product_cat', 'update_dinkassa_category', 10, 1);
-add_filter( 'manage_edit-product_cat_columns', 'wh_register_custom_fields' ); //Register Function
-add_action( 'manage_product_cat_custom_column', 'wh_display_custom_field_values' , 10, 3); //Populating the Column
-
 // Register custom field names in product category list on admin page
-function wh_register_custom_fields($columns) {
+add_filter( 'manage_edit-product_cat_columns', 'woocommerce_register_custom_fields' );
+function woocommerce_register_custom_fields($columns) {
     // Hide description and slug columns in product category list
     if (isset($columns['description']))
         unset($columns['description']);
@@ -1302,7 +1282,12 @@ function wh_register_custom_fields($columns) {
 }
 
 // Display custom field values in product category list on admin page
-function wh_display_custom_field_values($columns, $column, $id) {
+add_action( 'manage_product_cat_custom_column', 'woocommerce_display_custom_field_values' , 10, 3);
+function woocommerce_display_custom_field_values($columns, $column, $id) {
+    $term = get_term($id, 'product_cat');
+    if (is_a($term, 'WP_Term') && $term->name === 'Uncategorized')
+        return '';
+
     switch ($column)
     {
         case 'pro_meta_account':
@@ -1324,7 +1309,6 @@ function wh_display_custom_field_values($columns, $column, $id) {
 }
 
 add_filter( 'manage_edit-product_columns', 'woocommerce_admin_products_visibility_column' );
-
 function woocommerce_admin_products_visibility_column( $columns ){
     $columns['vatpercentage'] = 'VAT %';
     $columns['visibility'] = 'Visibility';
@@ -1370,7 +1354,7 @@ function display_admin_custom_product_fields( $column, $product_id ){
         {
             $meta_key = META_KEY_PREFIX . 'vatpercentage';
             $meta_value = get_post_meta($product_id, $meta_key, true);
-            echo esc_html($meta_value) . '%';
+            echo (int)($meta_value) . '%';
         }
         break;
     }
@@ -1519,7 +1503,7 @@ function woocommerce_event_logger($event, $status, $response, $dinkassa_event = 
 }
 
 /**
- * Appends blanks to 'string' so that the length of it is $column_width
+ * Appends blanks to $string so that the length of it is equal to $column_width
  *
  * @param string $string
  * @param int $column_width

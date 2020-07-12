@@ -2,7 +2,6 @@
 
 defined( 'ABSPATH' ) || exit;
 define('DINKASSA_SE_API','https://www.dinkassa.se/api');
-define('UTC2_OFFSET', 7200);
 define('UPDATE_DELAY', 60);
 if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
     class WooCommerce_Background_Process extends WP_Background_Process
@@ -130,10 +129,12 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 'hide_empty' => false));
             if (! is_wp_error($categories)) {
                 foreach ($categories as $category) {
-                    $term_id = $category->term_id;
-                    $category_id = get_term_meta($term_id, 'wh_meta_cat_id', true);
-                    if (! empty($category_id))
-                        $category_list[$category_id] = $category;
+                    if ($category->name != "Uncategorized") {
+                        $term_id = $category->term_id;
+                        $category_id = get_term_meta($term_id, 'wh_meta_cat_id', true);
+                        if (!empty($category_id))
+                            $category_list[$category_id] = $category;
+                    }
                 }
             }
             return $category_list;
@@ -185,7 +186,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * @param string $new_name
          * @return mixed bool or WP_Error
          */
-        private function wp_update_category_name($old_name, $new_name)
+        private function wc_update_category_name($old_name, $new_name)
         {
             global $wpdb;
 
@@ -218,8 +219,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * @param array $dinkassa_category_id_map
          * @param WP_Term[] $wc_categories
          * @return mixed array('term_id' => int, 'term_taxonomy_id' => int) or WP_Error
+         * @throws Exception
          */
-        private function update_wc_product_category($category_id, $dinkassa_category_id_map, $wc_categories)
+        private function wc_update_product_category($category_id, $dinkassa_category_id_map, $wc_categories)
         {
             if (empty($category_id))
                 return array('term_id' => 0, 'term_taxonomy_id' => '');
@@ -227,11 +229,13 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 $category = $dinkassa_category_id_map[$category_id];
                 $parent_category_id = $category['ParentCategoryId'];
                 $category_name = $category['Name'];
-                $parent_term = $this->update_wc_product_category($parent_category_id, $dinkassa_category_id_map, $wc_categories);
+                $parent_term = $this->wc_update_product_category($parent_category_id, $dinkassa_category_id_map, $wc_categories);
                 $category_term = term_exists($category_name, 'product_cat');
                 $parent_term_id = (int)$parent_term['term_id'];
                 $new_category = empty($wc_categories[$category_id]);
                 $existing_category = ! empty($category_term);
+                $parent_category_changed = false;
+                $category_name_changed = false;
                 if ($existing_category)
                 {
                     // Check if parent category in Dinkassa.se has changed.
@@ -249,9 +253,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                 'slug' => sanitize_title($category_name),
                                 'parent' => $parent_term_id
                             ));
-                        if ($this->log_woocommerce_events) {
-                            $this->log_category_update('category-updated', $category_name, $category_id);
-                        }
+                        $parent_category_changed = true;
                     }
                 }
                 else if ($new_category)
@@ -265,22 +267,17 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             'parent' => $parent_term_id
                         )
                     );
-                    if ($this->log_woocommerce_events) {
-                        $this->log_category_update('category-created', $category_name, $category_id);
-                    }
                 }
                 else {
                     // The name of an existing category has been changed.
                     // Update the old category name.
                     $wc_category = $wc_categories[$category_id];
                     $old_category_name = $wc_category->name;
-                    $result = $this->wp_update_category_name($old_category_name, $category_name);
+                    $result = $this->wc_update_category_name($old_category_name, $category_name);
                     if (! $result || is_wp_error($result))
                         return array('term_id' => 0, 'term_taxonomy_id' => ''); // Error
                     $category_term = term_exists($category_name, 'product_cat');
-                    if ($this->log_woocommerce_events) {
-                        $this->log_category_update('category-updated', $category_name, $category_id);
-                    }
+                    $category_name_changed = true;
                 }
                 if (empty($category_term) || is_wp_error($category_term))
                     return array('term_id' => 0, 'term_taxonomy_id' => ''); // Error
@@ -294,34 +291,43 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $only_allow_categories = $boolean_value ? 'on' : ''; // Checkbox value
                         if ($new_category)
                         {
-                            $current_datetime = date('Y-m-d H:i:s');
+                            date_default_timezone_set('Europe/Stockholm');
+                            $current_datetime = date(DateTimeInterface::ATOM);
                             add_term_meta($term_id, 'wh_meta_account', $account_number);
                             add_term_meta($term_id, 'wh_meta_only_cat', $only_allow_categories);
                             add_term_meta($term_id, 'wh_meta_default_vat', $default_vat_percentage);
                             add_term_meta($term_id, 'wh_meta_modified_datetime', $current_datetime);
                             add_term_meta($term_id, 'wh_meta_cat_id', $category_id);
                             add_term_meta($term_id, 'wh_meta_pending_crud', 0);
+                            if ($this->log_woocommerce_events) {
+                                $this->log_category_update('category-created', $category_name, $category_id);
+                            }
                         }
                         else {
                             // Check if any custom category fields have been updated in Dinkassa.se
                             $current_acc_nr = get_term_meta($term_id, 'wh_meta_account', true);
                             $current_only_cat = get_term_meta($term_id, 'wh_meta_only_cat', true);
                             $current_default_vat = get_term_meta($term_id, 'wh_meta_default_vat', true);
-                            $current_datetime = get_term_meta($term_id, 'wh_meta_modified_datetime', true);
+                            $wc_last_modified_datetime = get_term_meta($term_id, 'wh_meta_modified_datetime', true);
                             $modified = $account_number != $current_acc_nr
                                      || $only_allow_categories != $current_only_cat
-                                     || $default_vat_percentage != $current_default_vat;
-                            if ($this->log_woocommerce_events && $modified)
+                                     || $default_vat_percentage != $current_default_vat
+                                     || $category_name_changed
+                                     || $parent_category_changed;
+                            if ($modified)
                             {
-                                $wc_category_modified_timestamp = strtotime($current_datetime) + UTC2_OFFSET;
-                                $dinkassa_category_modified_timestamp = strtotime($category['LastModifiedDateTime']);
-                                if ($dinkassa_category_modified_timestamp > $wc_category_modified_timestamp)
+                                if ($this->log_woocommerce_events)
                                 {
-                                    $this->log_category_update('category-updated', $category_name, $category_id);
+                                    $datetime = $category['LastModifiedDateTime'];
+                                    $dinkassa_last_modified_timestamp = strtotime($datetime);
+                                    $wc_last_modified_timestamp = strtotime($wc_last_modified_datetime);
+                                    if ($dinkassa_last_modified_timestamp > $wc_last_modified_timestamp)
+                                    {
+                                        $this->log_category_update('category-updated', $category_name, $category_id);
+                                    }
                                 }
-                            }
-                            if ($modified) {
-                                $current_datetime = date('Y-m-d H:i:s');
+                                date_default_timezone_set('Europe/Stockholm');
+                                $current_datetime = date(DateTimeInterface::ATOM);
                                 update_term_meta($term_id, 'wh_meta_account', $account_number);
                                 update_term_meta($term_id, 'wh_meta_only_cat', $only_allow_categories);
                                 update_term_meta($term_id, 'wh_meta_default_vat', $default_vat_percentage);
@@ -368,9 +374,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          */
         private function delete_wc_categories($dinkassa_categories, $wc_categories)
         {
-            // Remove the action that is triggered when a product is deleted. It is
+            // Remove the action that is triggered when a category is deleted. It is
             // only supposed to be executed when an administrator is deleting a
-            // product manually from the product admin page.
+            // category manually from the product admin page.
             remove_action('pre_delete_term', 'delete_dinkassa_product_category');
             foreach ($wc_categories as $category_id => $wc_category)
             {
@@ -382,12 +388,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     if ($this->log_woocommerce_events) {
                         $this->log_category_update('category-deleted', $wc_category->name, $category_id);
                     }
-                    delete_term_meta($term_id, 'wh_meta_cat_id');
-                    delete_term_meta($term_id, 'wh_meta_account');
-                    delete_term_meta($term_id, 'wh_meta_only_cat');
-                    delete_term_meta($term_id, 'wh_meta_default_vat');
-                    delete_term_meta($term_id, 'wh_meta_pending_crud');
-                    delete_term_meta($term_id, 'wh_meta_modified_datetime');
                     wp_delete_term($term_id, 'product_cat');
                 }
             }
@@ -403,7 +403,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         private function delete_wc_products($wc_products)
         {
             // Any products still remaining in $wc_products have been removed from
-            // Dinkassa.se. These products will be removed from the WP database.
+            // Dinkassa.se and will be removed from the WP database.
 
             if (count($wc_products) > 0) {
                 // Remove action 'before_delete_post'. It's only supposed to be
@@ -467,7 +467,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * @param int $category_id Term_id of main category
          * @param array $dinkassa_category_ids
          * @param array $extra_category_ids
-         * @return int[] Returns an array of category term_ids
+         * @return array Returns an array of category term_ids
          */
         private function get_wc_category_ids($category_id, $dinkassa_category_ids, $extra_category_ids)
         {
@@ -492,8 +492,8 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * of the corresponding WooCommerce product aren't the same, false if otherwise.
          *
          * @return bool
-         * @var WC_Product_Simple $wc_product
-         * @var array $inventoryitem_cats
+         * @param WC_Product_Simple $wc_product
+         * @param array $inventoryitem_cats
          */
         private function categories_changed($inventoryitem_cats, $wc_product)
         {
@@ -503,7 +503,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             else {
                 foreach ($category_ids as $category_id)
                 {
-                    if (! array_key_exists($category_id, $inventoryitem_cats))
+                    if (! in_array($category_id, $inventoryitem_cats))
                         return true;
                 }
                 return false;
@@ -516,7 +516,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
          * these will be processed by sending the appropriate asynchronous
          * HTTP-requests to Dinkassa.se.
          *
-         * @param int[] $wc_product_ids
+         * @param array $wc_product_ids
          */
         private function process_pending_crud_operations($wc_product_ids)
         {
@@ -558,7 +558,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $event);
             }
             // Loop through all categories and check if there any pending
-            // operations.
+            // CRUD operations.
             $terms = get_terms(array(
                 'taxonomy' => 'product_cat',
                 'hide_empty' => false
@@ -617,7 +617,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Reads all products and categories from Dinkassa.se and creates/updates
+         * Reads products and categories from Dinkassa.se and creates/updates
          * corresponding WooCommerce products and categories and their respective
          * custom fields. Products and categories removed from Dinkassa.se will
          * also be removed from the WP database.
@@ -642,7 +642,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             // Create/update product categories
             foreach ($dinkassa_categories as $category_id => $category)
             {
-               $this->update_wc_product_category($category_id, $dinkassa_categories, $woocommerce_categories);
+               $this->wc_update_product_category($category_id, $dinkassa_categories, $woocommerce_categories);
             }
             $dinkassa_products = $this->get_json_data('inventoryitem');
             if (! empty($dinkassa_products)) {
@@ -659,7 +659,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $external_product_code = $dinkassa_product->{'ExternalProductCode'};
                     $price_including_vat = $dinkassa_product->{'PriceIncludingVat'};
                     $pickup_price_including_vat = $dinkassa_product->{'PickupPriceIncludingVat'};
-                    $vat_percentage = $dinkassa_product->{'VatPercentage'};
+                    $vat_percentage = (int)$dinkassa_product->{'VatPercentage'};
                     $quantity_in_stock_current = (int)$dinkassa_product->{'QuantityInStockCurrent'};
                     $extra_category_ids = $dinkassa_product->{'ExtraCategoryIds'};
                     $supplier_name = $dinkassa_product->{'SupplierName'};
@@ -671,7 +671,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $term = term_exists($category_name, 'product_cat');
                     if (empty($term))
                         continue; // Error
-                    $category_id = $term['term_id'];
+                    $category_id = (int)$term['term_id'];
                     if (empty($product_code) && !empty($external_product_code))
                         $product_code = $external_product_code;
                     $custom_field_data = array(
@@ -753,6 +753,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             {
                                 $meta_key = META_KEY_PREFIX . $field_name;
                                 $field_value = get_post_meta($product_id, $meta_key, true);
+                                $field_value = htmlspecialchars_decode($field_value);
                                 if ($custom_field_data[$field_name] != $field_value)
                                 {
                                     $modified = true;
@@ -792,7 +793,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Creates custom fields of a WooCommerce product and initializes them.
+         * Creates custom fields of a new WooCommerce product and initializes them.
          *
          * @param int $post_id
          * @param array $custom_product_fields An array(field_name => field_value)
