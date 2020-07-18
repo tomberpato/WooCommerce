@@ -21,9 +21,6 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
 
     private $integrator_id;
 
-    /**
-     * @var bool $log_woocommerce_events
-     */
     private $log_woocommerce_events;
 
     public function __construct()
@@ -79,10 +76,10 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
     }
 
     /**
-     * Handles the response from Dinkassa.se. The data in the response is used to set
-     * the ids of products and categories created in WooCommerce and update custom fields
-     * of products and categories. If a request fails, a flag is set to indicate that the
-     * request should be resent at a later time.
+     * Handles responses from Dinkassa.se. The data in the response is used to set the
+     * ids of products and categories created in WooCommerce and update custom fields
+     * of products and categories. If a request fails, a flag is set to indicate that
+     * the request should be processed again at a later time.
      *
      * @param string $event Type of event: product-purchased, product-created etc.
      * @param int $status HTTP status code of the response from Dinkassa.se

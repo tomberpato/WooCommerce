@@ -48,48 +48,85 @@ jQuery(document).ready(function($) {
 });
 */
 
-// Sets the hidden input fields '_modified_custom_fields' and
-// '_modified_builtin_fields' to true/false depending on whether
-// custom/builtin product fields have been modified.
+// JQuery scripts to detect product data that has been modified. The hidden inputs
+// _modified_custom_fields and _modified_builtin_fields are bit fields. A value == 0
+// indicates unmodified data. Any other value means that some of the input fields have
+// been modified.
 jQuery(document).ready(function($){
+	let modified_custom_bitfield = 0;
+	let modified_builtin_bitfield = 0;
+	let regular_price_input = $("#_regular_price");
+	let custom_field_inputs = $("*[id^='_custom_pf_']");
+	let product_visibility_radiobutton = $("input[name='_visibility']");
+	let current_regular_price = regular_price_input.val();
+	let current_visibility = $("input[name='_visibility']:checked").attr('id');
+	let current_visibility_on_sales_menu = current_visibility === '_visibility_visible'
+		                                || current_visibility === '_visibility_catalog';
+	const custom_field = {};
+	custom_field_inputs.each(function(index, inputfield) {
+		custom_field[inputfield.id] = {
+			currentValue : inputfield.value,
+			bitMask : 0x1 << index
+		}
+	});
 	$("#_modified_custom_fields").val(null);
 	$("#_modified_builtin_fields").val(null);
-	$("[id^='_custom_pf_']").on('change', function(event) {
-		$("#_modified_custom_fields").val(1);
-		let element_id = $(this).attr('id');
-		if (element_id === '_custom_pf_description')
-		{
-			if ($("#_synchronize_description").val())
-			{
-				let description = $(this).val();
-				$("#title").val(description);
-			}
+	regular_price_input.on('change', function(event) {
+		if ($("#_synchronize_prices").val()) {
+			let regular_price = $(this).val();
+			if (current_regular_price !== regular_price)
+				modified_builtin_bitfield |= 0x1;
+			else
+				modified_builtin_bitfield &= ~0x1;
 		}
+	});
+	product_visibility_radiobutton.on('change', function(event) {
+		let visibility = $(this).attr('id');
+		let visibility_on_sales_menu = visibility === '_visibility_visible'
+		                        	|| visibility === '_visibility_catalog';
+		if (current_visibility_on_sales_menu ^ visibility_on_sales_menu)
+			modified_builtin_bitfield |= 0x2;
+		else
+			modified_builtin_bitfield &= ~0x2;
+	});
+	custom_field_inputs.on('change', function() {
+		const id = this.id;
+		const inputValue = $(this).val();
+		if (id === '_custom_pf_description') {
+			if ($("#_synchronize_description").val())
+				$("#title").val(inputValue);
+			else
+				return;
+		}
+		const { bitMask, currentValue } = custom_field[id];
+		if (currentValue !== inputValue)
+			modified_custom_bitfield |= bitMask;
+		else
+			modified_custom_bitfield &= ~bitMask;
 	});
 	$("#title").on('change', function(event) {
 		if ($("#_synchronize_description").val()) {
-			let product_name = $(this).val();
-			$("#_custom_pf_description").val(product_name);
-			$("#_modified_custom_fields").val(1);
+			const title = $(this).val();
+			const id = '_custom_pf_description';
+			const { bitMask, currentTitle } = custom_field[id];
+			$("#_custom_pf_description").val(title);
+			if (currentTitle !== title)
+				modified_custom_bitfield |= bitMask;
+			else
+				modified_custom_bitfield &= ~bitMask;
 		}
 	});
-	$("[id^='_visibility_']").on('change', function(event) {
-		$("#_modified_builtin_fields").val(1);
-	});
-	$("#_regular_price").on('change', function(event) {
-		if ($("#_synchronize_prices").val())
-			$("#_modified_builtin_fields").val(1);
-	});
-	$("[id^='in-product_cat-']").on('change', function(event) {
-		$("#_modified_builtin_fields").val(1);
-	});
+	$("#post").submit(function() {
+		$("#_modified_custom_fields").val(modified_custom_bitfield);
+		$("#_modified_builtin_fields").val(modified_builtin_bitfield);
+	})
 });
 
 jQuery(document).ready(function($) {
 	let sync_checkbox = $("input.synch_checkbox");
 	let value = sync_checkbox.is(':checked');
 	set_required_attribute($, value);
-	sync_checkbox.click(function() {
+	sync_checkbox.on('click', function() {
 		value = sync_checkbox.is(':checked');
 		set_required_attribute($, value);
 	});

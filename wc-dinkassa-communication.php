@@ -1197,11 +1197,7 @@ function woocommerce_taxonomy_add_new_meta_field() {
 
 //Product Cat Edit page
 function woocommerce_taxonomy_edit_meta_field($term) {
-
-    //getting term ID
     $term_id = $term->term_id;
-
-    // retrieve the existing value(s) for this meta field.
     $wh_meta_account = get_term_meta($term_id, 'wh_meta_account', true);
     $wh_meta_only_cat = get_term_meta($term_id, 'wh_meta_only_cat', true);
     $wh_meta_default_vat = get_term_meta($term_id, 'wh_meta_default_vat', true);
