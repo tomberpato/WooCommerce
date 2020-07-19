@@ -52,7 +52,8 @@ jQuery(document).ready(function($) {
 // _modified_custom_fields and _modified_builtin_fields are bit fields. A value == 0
 // indicates unmodified data. Any other value means that some of the input fields have
 // been modified.
-jQuery(document).ready(function($){
+jQuery(document).ready(function($) {
+	// Existing product
 	let modified_custom_bitfield = 0;
 	let modified_builtin_bitfield = 0;
 	let regular_price_input = $("#_regular_price");
@@ -61,17 +62,19 @@ jQuery(document).ready(function($){
 	let current_regular_price = regular_price_input.val();
 	let current_visibility = $("input[name='_visibility']:checked").attr('id');
 	let current_visibility_on_sales_menu = current_visibility === '_visibility_visible'
-		                                || current_visibility === '_visibility_catalog';
+										|| current_visibility === '_visibility_catalog';
+	// Create an associative map between HTML input IDs
+	// and the current value of custom product fields.
 	const custom_field = {};
-	custom_field_inputs.each(function(index, inputfield) {
+	custom_field_inputs.each(function (index, inputfield) {
 		custom_field[inputfield.id] = {
-			currentValue : inputfield.value,
-			bitMask : 0x1 << index
+			currentValue: inputfield.value,
+			bitMask: 0x1 << index
 		}
 	});
 	$("#_modified_custom_fields").val(null);
 	$("#_modified_builtin_fields").val(null);
-	regular_price_input.on('change', function(event) {
+	regular_price_input.on('change', function () {
 		if ($("#_synchronize_prices").val()) {
 			let regular_price = $(this).val();
 			if (current_regular_price !== regular_price)
@@ -80,16 +83,16 @@ jQuery(document).ready(function($){
 				modified_builtin_bitfield &= ~0x1;
 		}
 	});
-	product_visibility_radiobutton.on('change', function(event) {
+	product_visibility_radiobutton.on('change', function () {
 		let visibility = $(this).attr('id');
 		let visibility_on_sales_menu = visibility === '_visibility_visible'
-		                        	|| visibility === '_visibility_catalog';
+			|| visibility === '_visibility_catalog';
 		if (current_visibility_on_sales_menu ^ visibility_on_sales_menu)
 			modified_builtin_bitfield |= 0x2;
 		else
 			modified_builtin_bitfield &= ~0x2;
 	});
-	custom_field_inputs.on('change', function() {
+	custom_field_inputs.on('change', function () {
 		const id = this.id;
 		const inputValue = $(this).val();
 		if (id === '_custom_pf_description') {
@@ -98,17 +101,17 @@ jQuery(document).ready(function($){
 			else
 				return;
 		}
-		const { bitMask, currentValue } = custom_field[id];
+		const {bitMask, currentValue} = custom_field[id];
 		if (currentValue !== inputValue)
 			modified_custom_bitfield |= bitMask;
 		else
 			modified_custom_bitfield &= ~bitMask;
 	});
-	$("#title").on('change', function(event) {
+	$("#title").on('change', function () {
 		if ($("#_synchronize_description").val()) {
 			const title = $(this).val();
 			const id = '_custom_pf_description';
-			const { bitMask, currentTitle } = custom_field[id];
+			const {bitMask, currentTitle} = custom_field[id];
 			$("#_custom_pf_description").val(title);
 			if (currentTitle !== title)
 				modified_custom_bitfield |= bitMask;
@@ -116,7 +119,7 @@ jQuery(document).ready(function($){
 				modified_custom_bitfield &= ~bitMask;
 		}
 	});
-	$("#post").submit(function() {
+	$("#post").submit(function () {
 		$("#_modified_custom_fields").val(modified_custom_bitfield);
 		$("#_modified_builtin_fields").val(modified_builtin_bitfield);
 	})
