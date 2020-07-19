@@ -1,2 +1,2 @@
 # WooCommerce
-WooCommerce-Dinkassa Integration
+WooCommerce-ES Kassasystem Integration
