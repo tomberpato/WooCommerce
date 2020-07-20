@@ -909,8 +909,8 @@ function woocommerce_product_custom_fields()
 
 /**
  * Saves custom product fields of a created/updated product.
- * The function returns true if the product is being updated, false if it is
- * new.
+ * The function returns true if the product is being updated,
+ * false if it is new.
  *
  * @param int $post_id
  * @return bool

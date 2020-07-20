@@ -86,7 +86,7 @@ jQuery(document).ready(function($) {
 	product_visibility_radiobutton.on('change', function () {
 		let visibility = $(this).attr('id');
 		let visibility_on_sales_menu = visibility === '_visibility_visible'
-			|| visibility === '_visibility_catalog';
+			                        || visibility === '_visibility_catalog';
 		if (current_visibility_on_sales_menu ^ visibility_on_sales_menu)
 			modified_builtin_bitfield |= 0x2;
 		else

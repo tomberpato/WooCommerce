@@ -13,6 +13,7 @@ define('HTTP_OK', 200);
  */
 class WooCommerce_Async_Http_Request extends WP_Async_Request
 {
+    /* Note: Removed property types because they don't work for PHP versions < 7.4 */
     protected $action = 'woocommerce_async_http_request';
 
     private $machine_id;
@@ -33,6 +34,9 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
         $this->log_woocommerce_events = get_option('log_wc_events') === 'yes';
     }
 
+    /**
+     * Sends an HTTP request to the Dinkassa.se API and processes the response.
+     */
     protected function handle()
     {
         // TODO: Implement handle() method.
@@ -71,15 +75,15 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
                     $response = $_POST['info'];
                 woocommerce_event_logger($event, $http_code, $response);
             }
-            $this->process_dinkassa_response($event, $http_code, $response, $post_id, $dinkassa_id);
+            $this->process_server_response($event, $http_code, $response, $post_id, $dinkassa_id);
         }
     }
 
     /**
      * Handles responses from Dinkassa.se. The data in the response is used to set the
-     * ids of products and categories created in WooCommerce and update custom fields
-     * of products and categories. If a request fails, a flag is set to indicate that
-     * the request should be processed again at a later time.
+     * ids of products and categories created in WooCommerce and update custom fields.
+     * If a request fails, a flag is set to indicate that the request should be processed
+     * again at a later time.
      *
      * @param string $event Type of event: product-purchased, product-created etc.
      * @param int $status HTTP status code of the response from Dinkassa.se
@@ -87,7 +91,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
      * @param int $post_id WordPress id of a product or category
      * @param string $dinkassa_id Dinkassa.se inventoryitem/category ID
      */
-    private function process_dinkassa_response($event, $status, $response, $post_id, $dinkassa_id)
+    private function process_server_response($event, $status, $response, $post_id, $dinkassa_id)
     {
         switch ($event) {
             case 'product-created':
