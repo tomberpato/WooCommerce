@@ -74,19 +74,19 @@ jQuery(document).ready(function($) {
 	});
 	$("#_modified_custom_fields").val(null);
 	$("#_modified_builtin_fields").val(null);
-	regular_price_input.on('change', function () {
-		if ($("#_synchronize_prices").val()) {
-			let regular_price = $(this).val();
+	if ($("#_synchronize_prices").val()) {
+		regular_price_input.on('change', function () {
+			const regular_price = this.value;
 			if (current_regular_price !== regular_price)
 				modified_builtin_bitfield |= 0x1;
 			else
 				modified_builtin_bitfield &= ~0x1;
-		}
-	});
+		})
+	}
 	product_visibility_radiobutton.on('change', function () {
-		let visibility = $(this).attr('id');
-		let visibility_on_sales_menu = visibility === '_visibility_visible'
-			                        || visibility === '_visibility_catalog';
+		const visibility = this.id;
+		const visibility_on_sales_menu = visibility === '_visibility_visible'
+			                          || visibility === '_visibility_catalog';
 		if (current_visibility_on_sales_menu ^ visibility_on_sales_menu)
 			modified_builtin_bitfield |= 0x2;
 		else
@@ -94,7 +94,7 @@ jQuery(document).ready(function($) {
 	});
 	custom_field_inputs.on('change', function () {
 		const id = this.id;
-		const inputValue = $(this).val();
+		const inputValue = this.value;
 		if (id === '_custom_pf_description') {
 			if ($("#_synchronize_description").val())
 				$("#title").val(inputValue);
@@ -107,18 +107,18 @@ jQuery(document).ready(function($) {
 		else
 			modified_custom_bitfield &= ~bitMask;
 	});
-	$("#title").on('change', function () {
-		if ($("#_synchronize_description").val()) {
-			const title = $(this).val();
-			const id = '_custom_pf_description';
-			const {bitMask, currentTitle} = custom_field[id];
+	if ($("#_synchronize_description").val()) {
+		const id = '_custom_pf_description';
+		const {bitMask, currentTitle} = custom_field[id];
+		$("#title").on('change', function () {
+			const title = this.value;
 			$("#_custom_pf_description").val(title);
 			if (currentTitle !== title)
 				modified_custom_bitfield |= bitMask;
 			else
 				modified_custom_bitfield &= ~bitMask;
-		}
-	});
+		})
+	}
 	$("#post").submit(function () {
 		$("#_modified_custom_fields").val(modified_custom_bitfield);
 		$("#_modified_builtin_fields").val(modified_builtin_bitfield);
