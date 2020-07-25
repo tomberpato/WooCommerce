@@ -716,9 +716,13 @@ function woocommerce_product_pickup_price_field()
         )
     );
 }
+
 /**
- * @var WP_Term[] $categories
- * @var int $parent
+ * Returns an array of categories (WP_Term) that have $parent as parent category.
+ * These categories are removed from the array $categories.
+ *
+ * @param WP_Term[] $categories
+ * @param int $parent
  * @return WP_Term[] Returns all categories whose parent category is 'parent'
  */
 function get_subcategories($categories, $parent)
@@ -743,9 +747,12 @@ function get_subcategories($categories, $parent)
 }
 
 /**
- * @var WP_Term[] $parent_categories
- * @var WP_Term[] $subcategories
- * @var string $indent
+ * Creates an associative array of parent category => subcategories recursively.
+ * The subcategories are indented by an amount that depends on the depth.
+ *
+ * @param WP_Term[] $parent_categories
+ * @param WP_Term[] $subcategories
+ * @param string $indent
  * @return array Returns an array of (key, value) pairs
  */
 function create_hierarchical_option_list($parent_categories, $subcategories, $indent = '')
@@ -999,7 +1006,7 @@ function woocommerce_save_product_meta_data($post_id)
  * Checks if the product stock has changed. If it has, it updates the
  * stock quantity in Dinkassa.se.
  *
- * @var int $post_id Product ID
+ * @param int $post_id Product ID
  */
 function woocommerce_process_product_meta($post_id)
 {
@@ -1123,7 +1130,7 @@ function create_product_payload($product, $updating)
  * The function is used to save information about a product before
  * it's deleted.
  *
- * @var int $product_id
+ * @param int $product_id
  * @return array
  */
 function get_product_info($product_id)
@@ -1170,7 +1177,9 @@ function delete_dinkassa_product($post_id)
     }
 }
 
-//Product Cat Create page
+/**
+ * Product Category Create page
+ */
 function woocommerce_taxonomy_add_new_meta_field() {
     ?>
     <div class="form-field">
@@ -1195,7 +1204,11 @@ function woocommerce_taxonomy_add_new_meta_field() {
     <?php
 }
 
-//Product Cat Edit page
+/**
+ * Product category Edit page.
+ *
+ * @param WP_Term $term
+ */
 function woocommerce_taxonomy_edit_meta_field($term) {
     $term_id = $term->term_id;
     $wh_meta_account = get_term_meta($term_id, 'wh_meta_account', true);

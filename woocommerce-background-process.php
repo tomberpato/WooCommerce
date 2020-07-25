@@ -33,7 +33,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             // TODO: Implement task() method.
 
             // Update products and categories only if the synchronize
-            // flag is true and a user is not logged in, The process
+            // flag is true and a user is not logged in. The process
             // will resume updating when the user logs out.
             $do_update_products_and_categories = get_option('synchronize') === 'yes'
                                               && get_option('user_logged_in') === 'no';
@@ -511,9 +511,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Checks if there are any pending CRUD operations, such as updates,
-         * creations, deletions or changes in stock quantity. If there are any,
-         * these will be processed by sending the appropriate asynchronous
+         * Checks if there are any pending CRUD operations such as updates,
+         * creations, deletions or changes in stock quantity. If there are
+         * any, these will be processed by sending the appropriate asynchronous
          * HTTP-requests to Dinkassa.se.
          *
          * @param array $wc_product_ids
@@ -617,7 +617,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Reads products and categories from Dinkassa.se and creates/updates
+         * Reads inventoryitems and categories from Dinkassa.se and creates/updates
          * corresponding WooCommerce products and categories and their respective
          * custom fields. Products and categories removed from Dinkassa.se will
          * also be removed from the WP database.
@@ -712,7 +712,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         } catch (WC_Data_Exception $e) {
                         }
                         $product_id = $wc_product->save();
-                        $this->add_custom_product_fields($product_id, $custom_field_data);
+                        $this->create_custom_product_fields($product_id, $custom_field_data);
                         if ($this->log_woocommerce_events) {
                             $product_info = get_product_info($product_id);
                             woocommerce_event_logger('product-created', 200, $product_info, true);
@@ -793,12 +793,13 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Creates custom fields of a new WooCommerce product and initializes them.
+         * Creates custom fields of a new WooCommerce product and initializes them
+         * with data read from dinkassa.se.
          *
          * @param int $post_id
-         * @param array $custom_product_fields An array(field_name => field_value)
+         * @param array $custom_product_fields An associative array of field_name => field_value
          */
-        private function add_custom_product_fields($post_id, $custom_product_fields)
+        private function create_custom_product_fields($post_id, $custom_product_fields)
         {
             foreach ($custom_product_fields as $field_name => $value)
             {

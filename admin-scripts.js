@@ -58,6 +58,7 @@ jQuery(document).ready(function($) {
 	let modified_builtin_bitfield = 0;
 	let regular_price_input = $("#_regular_price");
 	let custom_field_inputs = $("*[id^='_custom_pf_']");
+	let synchronize_description = $("#_synchronize_description").val();
 	let product_visibility_radiobutton = $("input[name='_visibility']");
 	let current_regular_price = regular_price_input.val();
 	let current_visibility = $("input[name='_visibility']:checked").attr('id');
@@ -96,7 +97,7 @@ jQuery(document).ready(function($) {
 		const id = this.id;
 		const inputValue = this.value;
 		if (id === '_custom_pf_description') {
-			if ($("#_synchronize_description").val())
+			if (synchronize_description)
 				$("#title").val(inputValue);
 			else
 				return;
@@ -107,7 +108,7 @@ jQuery(document).ready(function($) {
 		else
 			modified_custom_bitfield &= ~bitMask;
 	});
-	if ($("#_synchronize_description").val()) {
+	if (synchronize_description) {
 		const id = '_custom_pf_description';
 		const {bitMask, currentTitle} = custom_field[id];
 		$("#title").on('change', function () {
