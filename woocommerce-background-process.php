@@ -4,16 +4,27 @@ defined( 'ABSPATH' ) || exit;
 define('DINKASSA_SE_API','https://www.dinkassa.se/api');
 define('UPDATE_DELAY', 60);
 if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
+    /**
+     * Handles updating of products and categories in the WooCommerce website.
+     * Objects of this class are instantiated in plugins_loaded_integration()
+     */
     class WooCommerce_Background_Process extends WP_Background_Process
     {
         protected $action = 'woocommerce_background_process';
 
+        /**
+         * @var bool $log_woocommerce_events
+         * @var bool $delete_dinkassa_products
+         */
         private $log_woocommerce_events;
+
+        private $delete_dinkassa_products;
 
         public function __construct()
         {
             parent::__construct();
             $this->log_woocommerce_events = get_option('log_wc_events') === 'yes';
+            $this->delete_dinkassa_products = get_option('delete_dinkassa_products') === 'yes';
         }
 
         /**
@@ -185,7 +196,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $this->crud_products[] = $product_id;
                 else {
                     $this->wc_product_id_map[$dinkassa_id] = $product_id;
-                    if ($this->pending_crud_operations($product_id))
+                    if ($this->pending_update_operation($product_id))
                         $this->crud_products[] = $product_id;
                 }
             }
@@ -548,26 +559,27 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 if ($pending_stock_quantity_update)
                     $this->update_dinkassa_product_stock_quantity($wc_product_id, $wc_product);
             }
-            $term_id = get_deleted_item_term_id();
-            $deleted_items = get_term_meta($term_id, 'meta_deleted_item');
-            foreach ($deleted_items as $item) {
-                // Resend request to delete product/category
-                if ($item->type == 'product') {
-                    $controller = "inventoryitem";
-                    $event = "product-deleted";
+            if ($this->delete_dinkassa_products) {
+                $term_id = get_deleted_item_term_id();
+                $deleted_items = get_term_meta($term_id, 'meta_deleted_item');
+                foreach ($deleted_items as $item) {
+                    // Resend request to delete product/category
+                    if ($item->type == 'product') {
+                        $controller = "inventoryitem";
+                        $event = "product-deleted";
+                    } else {
+                        $controller = "category";
+                        $event = "category-deleted";
+                    }
+                    create_async_http_request(
+                        "DELETE",
+                        null,
+                        $controller,
+                        null,
+                        $item->dinkassa_id,
+                        0,
+                        $event);
                 }
-                else {
-                    $controller = "category";
-                    $event = "category-deleted";
-                }
-                create_async_http_request(
-                    "DELETE",
-                    null,
-                    $controller,
-                    null,
-                    $item->dinkassa_id,
-                    0,
-                    $event);
             }
             // Loop through all categories and check if there any pending
             // CRUD operations.
@@ -591,7 +603,8 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Sends an asynchronous HTTP-request to change a product's stock quantity in Dinkassa.se.
+         * Sends an asynchronous HTTP-request to change a product's stock quantity in
+         * Dinkassa.se.
          *
          * @param int $product_id
          * @param WC_Product_Simple $wc_product
@@ -638,10 +651,12 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         private function update_wc_products_and_categories()
         {
             $this->create_product_id_map();
+            $dinkassa_ids = array();
             $synchronize_description = get_option('synch_desc') === 'yes';
             $synchronize_prices = get_option('synch_prices') === 'yes';
             $dinkassa_categories = $this->get_dinkassa_categories();
             $woocommerce_categories = $this->get_wc_category_list();
+            $deleted_item_term_id = get_deleted_item_term_id();
 
             // Remove the actions 'created_product_cat' and 'woocommerce_update_product'
             // to prevent them from being triggered. These actions are triggered auto-
@@ -660,6 +675,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             if (! empty($dinkassa_products)) {
                 foreach ($dinkassa_products as $dinkassa_product) {
                     $id = $dinkassa_product->{'Id'};
+                    array_push($dinkassa_ids, $id);
                     $category_name = $dinkassa_product->{'CategoryName'};
                     $description = $dinkassa_product->{'Description'};
                     $bar_code = $dinkassa_product->{'BarCode'};
@@ -703,40 +719,44 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     );
                     $wc_category_ids = $this->get_wc_category_ids($category_id, $dinkassa_categories, $extra_category_ids);
                     if (empty($this->wc_product_id_map[$id])) {
-                        // New product. Create and save it in the database
-                        $custom_field_data['id'] = $id;
-                        $custom_field_data['pending_crud'] = 0;
-                        $custom_field_data['quantity_change'] = 0;
-                        $wc_product = new WC_Product_Simple();
-                        $wc_product->set_name($description);
-                        $wc_product->set_status('publish');
-                        $wc_product->set_regular_price($price_including_vat);
-                        $wc_product->set_featured(true);
-                        $wc_product->set_menu_order($sorting_weight);
-                        $wc_product->set_manage_stock(true);
-                        $wc_product->set_stock_quantity($quantity_in_stock_current);
-                        $wc_product->set_stock_status($stock_status);
-                        $wc_product->set_reviews_allowed(true);
-                        $wc_product->set_backorders('no');
-                        $wc_product->set_category_ids($wc_category_ids);
-                        try {
-                            $wc_product->set_catalog_visibility($visibility);
-                        } catch (WC_Data_Exception $e) {
-                        }
-                        $product_id = $wc_product->save();
-                        $this->create_custom_product_fields($product_id, $custom_field_data);
-                        if ($this->log_woocommerce_events) {
-                            $product_info = get_product_info($product_id);
-                            woocommerce_event_logger('product-created', 200, $product_info, true);
+                        $wc_product_is_deleted = deleted_item_exists($deleted_item_term_id, 'product', $id);
+                        if ($this->delete_dinkassa_products || !$wc_product_is_deleted) {
+                            // Only add the new product if the settings 'delete_dinkassa_products' is true
+                            // or the product has not been deleted in WooCommerce.
+                            $custom_field_data['id'] = $id;
+                            $custom_field_data['pending_crud'] = 0;
+                            $custom_field_data['quantity_change'] = 0;
+                            $wc_product = new WC_Product_Simple();
+                            $wc_product->set_name($description);
+                            $wc_product->set_status('publish');
+                            $wc_product->set_regular_price($price_including_vat);
+                            $wc_product->set_featured(true);
+                            $wc_product->set_menu_order($sorting_weight);
+                            $wc_product->set_manage_stock(true);
+                            $wc_product->set_stock_quantity($quantity_in_stock_current);
+                            $wc_product->set_stock_status($stock_status);
+                            $wc_product->set_reviews_allowed(true);
+                            $wc_product->set_backorders('no');
+                            $wc_product->set_category_ids($wc_category_ids);
+                            try {
+                                $wc_product->set_catalog_visibility($visibility);
+                            } catch (WC_Data_Exception $e) {
+                            }
+                            $product_id = $wc_product->save();
+                            $this->create_custom_product_fields($product_id, $custom_field_data);
+                            if ($this->log_woocommerce_events) {
+                                $product_info = get_product_info($product_id);
+                                woocommerce_event_logger('product-created', 200, $product_info, true);
+                            }
                         }
                     }
                     else {
                         // Existing product. Update product properties and custom fields.
-                        // Don't update products with pending CRUD operations, otherwise
+                        // Don't update products with pending update operations, otherwise
                         // the changes will be overwritten.
 
                         $product_id = $this->wc_product_id_map[$id];
-                        if (! $this->pending_crud_operations($product_id))
+                        if (! $this->pending_update_operation($product_id))
                         {
                             /** @var WC_Product_Simple $wc_product */
 
@@ -800,6 +820,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 $this->delete_wc_products($this->wc_product_id_map);
                 $this->delete_wc_categories($dinkassa_categories, $woocommerce_categories);
                 $this->process_pending_crud_operations($this->crud_products);
+                $this->remove_deleted_items_elements($dinkassa_ids, $deleted_item_term_id);
             }
             return true;
         }
@@ -821,16 +842,47 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Returns true if a product has any pending CRUD operations, false otherwise.
+         * Returns true if a product has a pending update operation, otherwise false.
          *
          * @param int $product_id
          * @return bool
          */
-        private function pending_crud_operations($product_id)
+        private function pending_update_operation($product_id)
         {
             $meta_key = META_KEY_PREFIX . 'pending_crud';
             $pending_crud_operations = (int)get_post_meta($product_id, $meta_key, true);
-            return ($pending_crud_operations & 0x7) != 0;
+            return ($pending_crud_operations & 0x2) != 0;
+        }
+
+        /**
+         * If a product that has been removed from WooCommerce has also been removed
+         * from Dinkassa.se then the function will remove the corresponding element
+         * in the deleted_items list. This is only done if the 'delete_dinkassa_products'
+         * setting is false.
+         *
+         * @param array $dinkassa_ids
+         * @param int|mixed $term_id deleted_items term_id
+         */
+        private function remove_deleted_items_elements($dinkassa_ids, $term_id)
+        {
+            if (!$this->delete_dinkassa_products)
+            {
+                /**
+                 * @var WC_Deleted_Item[] $deleted_items
+                 * @var WC_Deleted_Item $item
+                 */
+                $items_to_delete = array();
+                $deleted_items = get_term_meta($term_id, 'meta_deleted_item');
+                foreach ($deleted_items as $item)
+                {
+                    if (! in_array($item->dinkassa_id, $dinkassa_ids)) {
+                        array_push($items_to_delete, $item);
+                    }
+                }
+                foreach ($items_to_delete as $item) {
+                    delete_term_meta($term_id, 'meta_deleted_item', $item);
+                }
+            }
         }
 
         /**

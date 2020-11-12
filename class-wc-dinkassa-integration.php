@@ -50,10 +50,10 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'class'             => 'machine_key',
                     'description'       => __( 'Each cash register machine has a unique, secret key associated with a specific machine ID.', 'woocommerce-dinkassa-integration' ),
                     'desc_tip'          => true,
-                    'custom_attributes' => array(
+ /*                   'custom_attributes' => array(
                           'pattern' => "\s*[0-9a-fA-F]{32}\s*",
                           'title' => 'Machine key must be a 32-digit hexadecimal number '
-                    ),
+                    ), // Machine-key doesn't necessarily have the same format as the other keys */
                     'default'           => ''
                 ),
 				'machine_id' => array(
@@ -91,23 +91,31 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
                     'description'       => __( 'Keep products and categories in WooCommerce and Dinkassa.se <br> synchronized.', 'woocommerce-dinkassa-integration' ),
                 ),
                 'synchronize_prices' => array(
-                    'title'             => __( 'Synchronize Prices', 'woocommerce-dinkassa-integration' ),
+                    'title'             => __( 'Synchronize prices', 'woocommerce-dinkassa-integration' ),
                     'type'              => 'checkbox',
                     'class'             => 'synch_price_checkbox',
-                    'label'             => __( 'Synchronize Prices', 'woocommerce-dinkassa-integration' ),
+                    'label'             => __( 'Synchronize prices', 'woocommerce-dinkassa-integration' ),
                     'default'           => 'yes',
                     'description'       => __( 'Synchronize prices in WooCommerce and Dinkassa.se.', 'woocommerce-dinkassa-integration' ),
                 ),
                 'synchronize_names'  => array(
-                    'title'             => __( 'Synchronize Item Names', 'woocommerce-dinkassa-integration' ),
+                    'title'             => __( 'Synchronize product names', 'woocommerce-dinkassa-integration' ),
                     'type'              => 'checkbox',
                     'class'             => 'synch_name_checkbox',
-                    'label'             => __( 'Synchronize Item Names', 'woocommerce-dinkassa-integration' ),
+                    'label'             => __( 'Synchronize product names', 'woocommerce-dinkassa-integration' ),
                     'default'           => 'yes',
-                    'description'       => __( 'Synchronize item names in WooCommerce and Dinkassa.se.', 'woocommerce-dinkassa-integration' ),
+                    'description'       => __( 'Synchronize product names in WooCommerce and Dinkassa.se.', 'woocommerce-dinkassa-integration' ),
+                ),
+                'delete_dinkassa_products'  => array(
+                    'title'             => __( 'Delete Dinkassa.se products', 'woocommerce-dinkassa-integration' ),
+                    'type'              => 'checkbox',
+                    'class'             => 'delete_prod_checkbox',
+                    'label'             => __( 'Delete Dinkassa.se products', 'woocommerce-dinkassa-integration' ),
+                    'default'           => 'no',
+                    'description'       => __( 'Products deleted in WooCommerce are also deleted in Dinkassa.se', 'woocommerce-dinkassa-integration' ),
                 ),
                 'log_wc_events' => array(
-                    'title'             => __( 'Log events', 'woocommerce-dinkassa-integration' ),
+                    'title'             => __( 'Log WooCommerce events', 'woocommerce-dinkassa-integration' ),
                     'type'              => 'checkbox',
                     'class'             => 'log_events',
                     'label'             => __( 'Log WooCommerce events', 'woocommerce-dinkassa-integration' ),
@@ -229,6 +237,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
             $synch_prices = $this->settings['synchronize_prices'];
             $sync_names = $this->settings['synchronize_names'];
             $log_wc_events = $this->settings['log_wc_events'];
+            $delete_dinkassa_products = $this->settings['delete_dinkassa_products'];
             update_option('machine_id', $machine_id);
             update_option('machine_key', $machine_key);
             update_option('integrator_id', $integrator_id);
@@ -236,6 +245,7 @@ if ( ! class_exists( 'WC_DinKassa_Integration' ) ) :
             update_option('synch_prices', $synch_prices);
             update_option('synch_desc', $sync_names);
             update_option('log_wc_events', $log_wc_events);
+            update_option('delete_dinkassa_products', $delete_dinkassa_products);
         }
     }
 endif;

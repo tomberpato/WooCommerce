@@ -169,7 +169,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
                 {
                     $type = $event === 'product-deleted'? 'product' : 'category';
                     $term_id = get_deleted_item_term_id();
-                    if (! $this->deleted_item_exists($term_id, $type, $dinkassa_id))
+                    if (! deleted_item_exists($term_id, $type, $dinkassa_id))
                     {
                         if ($status >= 400) {
                             $deleted_item = new WC_Deleted_Item();
@@ -219,26 +219,6 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
                 }
                 break;
         }
-    }
-
-    /**
-     * Returns true if there exists an item in the list of WC_Deleted_Items
-     * that matches $type and $dinkassa_id.
-     *
-     * @param int $term_id
-     * @param string $type
-     * @param string $dinkassa_id
-     * @return bool
-     */
-    private function deleted_item_exists($term_id, $type, $dinkassa_id)
-    {
-        /** @var WC_Deleted_Item[] $deleted_items */
-        $deleted_items = get_term_meta($term_id, 'meta_deleted_item');
-        foreach ($deleted_items as $item) {
-            if ($item->type == $type && $item->dinkassa_id == $dinkassa_id)
-                return true;
-        }
-        return false;
     }
 
     /**

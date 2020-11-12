@@ -3,7 +3,7 @@
 * Plugin Name: WooCommerce-ES Kassasystem Integration
 * Plugin URI: https://github.com/tomberpato/WooCommerce
 * Description: A plugin for managing communication between WooCommerce and the Dinkassa.se server.
-* Version: 2.1.0
+* Version: 2.1.2
 * Author: Tom Boye
 * License: None
 */
@@ -447,7 +447,8 @@ function wordpress_logout_handler()
     update_option('user_logged_in', 'no');
     if ($synchronizing && ! empty($background_process))
     {
-        $background_process->push_to_queue(1);
+        if ($background_process->is_queue_empty())
+            $background_process->push_to_queue(1);
         $background_process->save()->dispatch();
     }
 }
@@ -718,12 +719,12 @@ function woocommerce_product_pickup_price_field()
 }
 
 /**
- * Returns an array of categories (WP_Term) that have $parent as parent category.
- * These categories are removed from the array $categories.
+ * Returns an array of categories (WP_Term[]) that have $parent as parent
+ * category. These categories are removed from the array $categories.
  *
  * @param WP_Term[] $categories
  * @param int $parent
- * @return WP_Term[] Returns all categories whose parent category is 'parent'
+ * @return WP_Term[] Array of categories whose parent category is $parent
  */
 function get_subcategories($categories, $parent)
 {
@@ -748,14 +749,15 @@ function get_subcategories($categories, $parent)
 
 /**
  * Creates an associative array of parent category => subcategories recursively.
- * The subcategories are indented by an amount that depends on the depth.
+ * The subcategories are indented by an amount that depends on the depth of the
+ * subcategory.
  *
  * @param WP_Term[] $parent_categories
- * @param WP_Term[] $subcategories
+ * @param WP_Term[] $allcategories
  * @param string $indent
- * @return array Returns an array of (key, value) pairs
+ * @return array An associative array of (key => value) pairs
  */
-function create_hierarchical_option_list($parent_categories, $subcategories, $indent = '')
+function create_hierarchical_option_list($parent_categories, $allcategories, $indent = '')
 {
     $option_list = array();
     foreach ($parent_categories as $parent_category)
@@ -763,9 +765,9 @@ function create_hierarchical_option_list($parent_categories, $subcategories, $in
         $key = $parent_category->name;
         $value = $indent . $parent_category->name;
         $option_list = array_merge($option_list, array($key => $value));
-        $main_cat = get_subcategories($subcategories, $parent_category->term_id);
-        if (count($main_cat) > 0) {
-            $hierarchical_list = create_hierarchical_option_list($main_cat, $subcategories, $indent . BLANKS);
+        $subcategories = get_subcategories($allcategories, $parent_category->term_id);
+        if (count($subcategories) > 0) {
+            $hierarchical_list = create_hierarchical_option_list($subcategories, $allcategories, $indent . BLANKS);
             $option_list = array_merge($option_list, $hierarchical_list);
         }
     }
@@ -1154,8 +1156,12 @@ function get_product_info($product_id)
 }
 
 /**
- * Deletes a product in Dinkassa.se. The product's custom
- * fields are also removed from the WordPress database.
+ * Deletes a product in Dinkassa.se if the setting 'delete_dinkassa_products' is true.
+ * The product's custom fields are also removed from the WordPress database. If the
+ * setting is false the product is not deleted in Dinkassa.se. Instead, the dinkassa_id
+ * is stored in the database as a term_meta. WooCommerce needs to remember which products
+ * that have been deleted in order to prevent them from being added as new products when
+ * WooCommerce is updated.
  *
  * @param int $post_id
  */
@@ -1164,17 +1170,55 @@ function delete_dinkassa_product($post_id)
     $meta_key = META_KEY_PREFIX . 'id';
     $dinkassa_id = get_post_meta($post_id, $meta_key, true);
     if (! empty($dinkassa_id)) {
-        $product_info = get_product_info($post_id);
-        create_async_http_request(
-            "DELETE",
-            null,
-            "inventoryitem",
-            null,
-            $dinkassa_id,
-            0,
-            "product-deleted",
-            $product_info);
+        $delete_dinkassa_products = get_option('delete_dinkassa_products');
+        if ($delete_dinkassa_products === 'yes') {
+            // Delete product in Dinkassa.se
+
+            $product_info = get_product_info($post_id);
+            create_async_http_request(
+                "DELETE",
+                null,
+                "inventoryitem",
+                null,
+                $dinkassa_id,
+                0,
+                "product-deleted",
+                $product_info);
+        }
+        else {
+            // Don't delete the product in Dinkassa.se.
+            // Save dinkassa_id in the database so that WooCommerce can
+            // remember which products have been deleted. This prevents
+            // them from being added during the next update.
+            $term_id = get_deleted_item_term_id();
+            if (! deleted_item_exists($term_id, 'product', $dinkassa_id)) {
+                $deleted_item = new WC_Deleted_Item();
+                $deleted_item->type = 'product';
+                $deleted_item->dinkassa_id = $dinkassa_id;
+                add_term_meta($term_id, 'meta_deleted_item', $deleted_item);
+            }
+        }
     }
+}
+
+/**
+ * Returns true if there exists an item in the list of WC_Deleted_Items
+ * that matches $type and $dinkassa_id.
+ *
+ * @param int $term_id
+ * @param string $type
+ * @param string $dinkassa_id
+ * @return bool
+ */
+function deleted_item_exists($term_id, $type, $dinkassa_id)
+{
+    /** @var WC_Deleted_Item[] $deleted_items */
+    $deleted_items = get_term_meta($term_id, 'meta_deleted_item');
+    foreach ($deleted_items as $item) {
+        if ($item->type == $type && $item->dinkassa_id == $dinkassa_id)
+            return true;
+    }
+    return false;
 }
 
 /**
