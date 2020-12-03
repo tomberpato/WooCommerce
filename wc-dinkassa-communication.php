@@ -2,7 +2,7 @@
 /**
 * Plugin Name: WooCommerce-ES Kassasystem Integration
 * Plugin URI: https://github.com/tomberpato/WooCommerce
-* Description: A plugin for managing communication between WooCommerce and the Dinkassa.se server.
+* Description: A plugin for integrating WooCommerce with the ES Kassasystem Dinkassa.se server.
 * Version: 2.1.2
 * Author: Tom Boye
 * License: None
@@ -109,7 +109,7 @@ $wp_lock = null;
  * @param string $dinkassa_id Dinkassa Id of a product or category
  * @param int $post_id WordPress post_id/term_id of product and category resp.
  * @param string $event Name of an event e.g. 'stock-quantity-updated', 'product-updated' etc.
- * @param array $info Contains information about a deleted product/category
+ * @param array|mixed $info Contains information about a deleted product/category
  */
 function create_async_http_request(
         $request,
@@ -168,7 +168,11 @@ add_action('created_product_cat', 'create_dinkassa_product_category', 10, 2);
 /**
  * Registers a taxonomy 'deleted_item' used for storing information about
  * deleted products and categories. The information is used when you need
- * to resend a failed delete product/category request to Dinkassa.se.
+ * to resend a failed delete product/category request to Dinkassa.se. It
+ * is also used to remember which products have been deleted in WooCommerce
+ * when the settings 'delete_dinkassa_products' on the integration page is
+ * false. Remembering which WooCommerce products that have been deleted
+ * prevents these products from being added during an update.
  */
 function register_custom_taxonomy()
 {

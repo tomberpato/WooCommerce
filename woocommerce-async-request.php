@@ -5,7 +5,7 @@ define('HTTP_OK', 200);
 /**
  * Class WooCommerce_Async_Http_Request
  *
- * Class for handling non-blocking asynchronous requests. Sends asynchronous
+ * Class for handling non-blocking asynchronous HTTP requests. Sends asynchronous
  * HTTP-requests to update the Dinkassa.se API in response to events such as
  * purchases, creation/editing of products and categories. The response sent
  * back from Dinkassa.se is then processed by the thread.
@@ -16,11 +16,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
     /* Note: Removed property types because they don't work for PHP versions < 7.4 */
     protected $action = 'woocommerce_async_http_request';
 
-    private $machine_id;
-
-    private $machine_key;
-
-    private $integrator_id;
+    private $dinkassa_headers;
 
     private $log_woocommerce_events;
 
@@ -28,9 +24,11 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
     {
         parent::__construct();
 
-        $this->machine_id = get_option('machine_id');
-        $this->machine_key = get_option('machine_key');
-        $this->integrator_id = get_option('integrator_id');
+        $this->dinkassa_headers = array(
+            'MachineId: ' . get_option('machine_id'),
+            'MachineKey: ' . get_option('machine_key'),
+            'IntegratorId: ' . get_option('integrator_id')
+        );
         $this->log_woocommerce_events = get_option('log_wc_events') === 'yes';
     }
 
@@ -54,7 +52,8 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
             $request = $_POST['request'];
             $post_id = (int)$_POST['post_id'];
             $opt_headers = $_POST['opt_headers'];
-            $headers = $this->get_dinkassa_headers($opt_headers);
+            if (! empty($opt_headers))
+                $this->dinkassa_headers = array_merge($this->dinkassa_headers, $opt_headers);
             curl_setopt($handle, CURLOPT_CUSTOMREQUEST, $request);
             if (isset($_POST['data']))
             {
@@ -63,7 +62,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
             }
             curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($handle, CURLOPT_SSL_VERIFYPEER, is_ssl()); // curl_exec() error code 60 without this
-            curl_setopt($handle, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($handle, CURLOPT_HTTPHEADER, $this->dinkassa_headers);
             curl_setopt($handle, CURLOPT_CONNECTTIMEOUT, 10);
             curl_setopt($handle, CURLOPT_TIMEOUT, 30);
             $response = curl_exec($handle);
@@ -83,7 +82,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
      * Handles responses from Dinkassa.se. The data in the response is used to set the
      * ids of products and categories created in WooCommerce and update custom fields.
      * If a request fails, a flag is set to indicate that the request should be processed
-     * again at a later time.
+     * again.
      *
      * @param string $event Type of event: product-purchased, product-created etc.
      * @param int $status HTTP status code of the response from Dinkassa.se
@@ -219,22 +218,5 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
                 }
                 break;
         }
-    }
-
-    /**
-     * @param array $opt_headers
-     * @return array Returns an array consisting of the three Dinkassa API keys
-     *               and optional headers.
-     */
-    private function get_dinkassa_headers($opt_headers)
-    {
-        $headers = array(
-            'MachineId: ' . $this->machine_id,
-            'MachineKey: ' . $this->machine_key,
-            'IntegratorId: ' . $this->integrator_id
-        );
-        if (! empty($opt_headers))
-            $headers = array_merge($headers, $opt_headers);
-        return $headers;
     }
 }

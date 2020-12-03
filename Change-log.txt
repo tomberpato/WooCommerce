@@ -1,0 +1,4 @@
+2.1.2 - Added a checkbox on the integration page so you can choose whether or not
+        you want products thay have been removed in WooCommerce also be removed 
+        in Dinkassa.se.
+2.1.1 - Removed checking the format of machine-key input on the integration page

@@ -203,7 +203,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Updates the name of an existing product category.
+         * Updates the name of an existing WooCommerce product category.
          *
          * @param string $old_name
          * @param string $new_name
@@ -233,9 +233,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * Creates/updates a product category and its custom fields. If the category
+         * Creates/updates a WooCommerce product category. If the category
          * has a parent category the function will recursively create it first.
-         * All WooCommerce product categories have 5 custom fields: AccountNumber,
+         * WooCommerce product categories have 5 custom fields: AccountNumber,
          * OnlyAllowCategories, DefaultVatPercentage, CategoryId and LastModifiedTime.
          *
          * @param string $category_id Dinkassa.se category ID
@@ -581,8 +581,8 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                         $event);
                 }
             }
-            // Loop through all categories and check if there any pending
-            // CRUD operations.
+            // Loop through all categories and check if there are any pending
+            // create/update operations.
             $terms = get_terms(array(
                 'taxonomy' => 'product_cat',
                 'hide_empty' => false
@@ -855,7 +855,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         }
 
         /**
-         * If a product that has been removed from WooCommerce has also been removed
+         * If a product that has been removed from WooCommerce also has been removed
          * from Dinkassa.se then the function will remove the corresponding element
          * in the deleted_items list. This is only done if the 'delete_dinkassa_products'
          * setting is false.
