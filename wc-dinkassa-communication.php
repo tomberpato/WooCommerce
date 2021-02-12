@@ -752,9 +752,9 @@ function get_subcategories($categories, $parent)
 }
 
 /**
- * Creates an associative array of parent category => subcategories recursively.
- * The subcategories are indented by an amount that depends on the depth of the
- * subcategory.
+ * Creates an associative array of categories => subcategories recursively.
+ * The subcategories are indented by an amount that depends on the depth of
+ * the subcategories.
  *
  * @param WP_Term[] $parent_categories
  * @param WP_Term[] $allcategories
@@ -1192,8 +1192,8 @@ function delete_dinkassa_product($post_id)
         else {
             // Don't delete the product in Dinkassa.se.
             // Save dinkassa_id in the database so that WooCommerce can
-            // remember which products have been deleted. This prevents
-            // them from being added during the next update.
+            // remember which products that have been deleted. This pre-
+            // vents them from being added during the next update.
             $term_id = get_deleted_item_term_id();
             if (! deleted_item_exists($term_id, 'product', $dinkassa_id)) {
                 $deleted_item = new WC_Deleted_Item();

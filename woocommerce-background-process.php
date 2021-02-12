@@ -5,8 +5,11 @@ define('DINKASSA_SE_API','https://www.dinkassa.se/api');
 define('UPDATE_DELAY', 60);
 if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
     /**
-     * Handles updating of products and categories in the WooCommerce website.
-     * Objects of this class are instantiated in plugins_loaded_integration()
+     * Handles updating of products and categories on the WooCommerce website.
+     * Objects of this class are instantiated in the action plugins_loaded_integration()
+     * (wc-dinkassa-communication.php) which is executed when the plugins are loaded.
+     * Once a minute the process will execute the method task() that reads data
+     * from the Dinkassa.se server and processes it.
      */
     class WooCommerce_Background_Process extends WP_Background_Process
     {
@@ -694,7 +697,11 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $sorting_weight = (int)$dinkassa_product->{'SortingWeight'};
                     $last_modified_date = $dinkassa_product->{'LastModifiedDateTime'};
                     $visible_on_sales_menu = $dinkassa_product->{'VisibleOnSalesMenu'};
-                    $visibility = empty($visible_on_sales_menu)? 'hidden' : 'visible';
+                    $visibility = null;
+                    if (empty($visible_on_sales_menu) || $visible_on_sales_menu == 'true')
+                        $visibility = 'visible';
+                    else
+                        $visibility = 'hidden';
                     $stock_status = $quantity_in_stock_current > 0 ? 'instock' : 'outofstock';
                     $term = term_exists($category_name, 'product_cat');
                     if (empty($term))

@@ -33,7 +33,7 @@ class WooCommerce_Async_Http_Request extends WP_Async_Request
     }
 
     /**
-     * Sends an HTTP request to the Dinkassa.se API and processes the response.
+     * Sends an HTTP request to the Dinkassa.se server and processes the response.
      */
     protected function handle()
     {
