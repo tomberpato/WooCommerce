@@ -655,6 +655,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
         {
             $this->create_product_id_map();
             $dinkassa_ids = array();
+            $wc_product_names = array();
             $synchronize_description = get_option('synch_desc') === 'yes';
             $synchronize_prices = get_option('synch_prices') === 'yes';
             $dinkassa_categories = $this->get_dinkassa_categories();
@@ -677,10 +678,13 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             $dinkassa_products = $this->get_json_data('inventoryitem');
             if (! empty($dinkassa_products)) {
                 foreach ($dinkassa_products as $dinkassa_product) {
+                    $description = $dinkassa_product->{'Description'};
+                    if (array_key_exists($description, $wc_product_names))
+                        continue;
+                    $wc_product_names[$description] = $description;
                     $id = $dinkassa_product->{'Id'};
                     array_push($dinkassa_ids, $id);
                     $category_name = $dinkassa_product->{'CategoryName'};
-                    $description = $dinkassa_product->{'Description'};
                     $bar_code = $dinkassa_product->{'BarCode'};
                     $bar_code2 = $dinkassa_product->{'BarCode2'};
                     $bar_code3 = $dinkassa_product->{'BarCode3'};
@@ -746,7 +750,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             $wc_product->set_backorders('no');
                             $wc_product->set_category_ids($wc_category_ids);
                             try {
-                                $wc_product->set_catalog_visibility($visibility);
+                                $wc_product->set_catalog_visibility('visible');
                             } catch (WC_Data_Exception $e) {
                             }
                             $product_id = $wc_product->save();
@@ -783,10 +787,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                 $wc_product->set_stock_status($stock_status);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
                                 $wc_product->set_category_ids($wc_category_ids);
-                                try {
-                                    $wc_product->set_catalog_visibility($visibility);
-                                } catch (WC_Data_Exception $e) {
-                                }
                             }
                             foreach ($custom_field_data as $field_name => $value)
                             {
