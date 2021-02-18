@@ -158,7 +158,7 @@ function plugins_loaded_integration() {
     $wp_lock = new WP_Lock("wp_resource_id");
 }
 add_action('woocommerce_new_order', 'update_dinkassa_product_inventory', 10, 2);
-add_action('woocommerce_update_product', 'update_dinkassa_product', 10, 2);
+//add_action('woocommerce_update_product', 'update_dinkassa_product', 10, 2);
 add_action('edited_product_cat', 'update_dinkassa_category', 10, 1);
 add_action('before_delete_post', 'delete_dinkassa_product', 10, 1);
 add_action('pre_delete_term', 'delete_dinkassa_product_category', 10, 4);
