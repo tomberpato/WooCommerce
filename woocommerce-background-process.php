@@ -678,6 +678,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
             $dinkassa_products = $this->get_json_data('inventoryitem');
             if (! empty($dinkassa_products)) {
                 foreach ($dinkassa_products as $dinkassa_product) {
+                    // Prevent duplicate products
                     $description = $dinkassa_product->{'Description'};
                     if (array_key_exists($description, $wc_product_names))
                         continue;
@@ -702,7 +703,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $last_modified_date = $dinkassa_product->{'LastModifiedDateTime'};
                     $visible_on_sales_menu = $dinkassa_product->{'VisibleOnSalesMenu'};
                     $visibility = null;
-                    if (empty($visible_on_sales_menu) || $visible_on_sales_menu == 'true')
+                    if (empty($visible_on_sales_menu) || $visible_on_sales_menu)
                         $visibility = 'visible';
                     else
                         $visibility = 'hidden';
@@ -750,7 +751,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             $wc_product->set_backorders('no');
                             $wc_product->set_category_ids($wc_category_ids);
                             try {
-                                $wc_product->set_catalog_visibility('visible');
+                                $wc_product->set_catalog_visibility($visibility);
                             } catch (WC_Data_Exception $e) {
                             }
                             $product_id = $wc_product->save();
@@ -787,6 +788,10 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                 $wc_product->set_stock_status($stock_status);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
                                 $wc_product->set_category_ids($wc_category_ids);
+                                try {
+                                    $wc_product->set_catalog_visibility($visibility);
+                                } catch (WC_Data_Exception $e) {
+                                }
                             }
                             foreach ($custom_field_data as $field_name => $value)
                             {
