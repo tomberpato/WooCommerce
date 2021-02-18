@@ -703,7 +703,9 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                     $last_modified_date = $dinkassa_product->{'LastModifiedDateTime'};
                     $visible_on_sales_menu = $dinkassa_product->{'VisibleOnSalesMenu'};
                     $visibility = null;
-                    if (empty($visible_on_sales_menu) || $visible_on_sales_menu)
+                    if (empty($visible_on_sales_menu))
+                        $visibility = 'hidden';
+                    else if ($visible_on_sales_menu)
                         $visibility = 'visible';
                     else
                         $visibility = 'hidden';
