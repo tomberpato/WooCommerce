@@ -680,10 +680,10 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 foreach ($dinkassa_products as $dinkassa_product) {
                     // Prevent duplicate products
                     $description = $dinkassa_product->{'Description'};
-                    if (array_key_exists($description, $wc_product_names))
-                        continue;
                     $wc_product_names[$description] = $description;
                     $id = $dinkassa_product->{'Id'};
+                    if (array_key_exists($id, $dinkassa_ids))
+                        continue;
                     array_push($dinkassa_ids, $id);
                     $category_name = $dinkassa_product->{'CategoryName'};
                     $bar_code = $dinkassa_product->{'BarCode'};
@@ -764,7 +764,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             }
                         }
                     }
-                    else if (false){
+                    else if (false) {
                         // Existing product. Update product properties and custom fields.
                         // Don't update products with pending update operations, otherwise
                         // the changes will be overwritten.
@@ -826,10 +826,10 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                 // Remove corresponding WooCommerce products and categories, if any,
                 // that have been removed from Dinkassa.se. Process any pending CRUD
                 // operations for products and categories.
-                $this->delete_wc_products($this->wc_product_id_map);
+/*                $this->delete_wc_products($this->wc_product_id_map);
                 $this->delete_wc_categories($dinkassa_categories, $woocommerce_categories);
                 $this->process_pending_crud_operations($this->crud_products);
-                $this->remove_deleted_items_elements($dinkassa_ids, $deleted_item_term_id);
+                $this->remove_deleted_items_elements($dinkassa_ids, $deleted_item_term_id);*/
             }
             return true;
         }
