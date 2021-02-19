@@ -764,7 +764,7 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             }
                         }
                     }
-                    else {
+                    else if (false){
                         // Existing product. Update product properties and custom fields.
                         // Don't update products with pending update operations, otherwise
                         // the changes will be overwritten.
@@ -779,7 +779,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                             $modified = $wc_product->get_name() != $description && $synchronize_description
                                      || $wc_product->get_regular_price() != $price_including_vat && $synchronize_prices
                                      || $wc_product->get_stock_quantity() != $quantity_in_stock_current
-                                     || $wc_product->get_catalog_visibility() != $visibility
                                      || $this->categories_changed($wc_category_ids, $wc_product);
                             if ($modified)
                             {
@@ -790,10 +789,6 @@ if ( ! class_exists( 'WooCommerce_Background_Process' ) ) :
                                 $wc_product->set_stock_status($stock_status);
                                 $wc_product->set_stock_quantity($quantity_in_stock_current);
                                 $wc_product->set_category_ids($wc_category_ids);
-                                try {
-                                    $wc_product->set_catalog_visibility($visibility);
-                                } catch (WC_Data_Exception $e) {
-                                }
                             }
                             foreach ($custom_field_data as $field_name => $value)
                             {
